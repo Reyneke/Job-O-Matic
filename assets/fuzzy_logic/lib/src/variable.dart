@@ -1,0 +1,32 @@
+part of '../fuzzylogic.dart';
+
+/// Fuzzy
+class FuzzyVariable<T extends num> {
+  late List<FuzzySet<T>> sets;
+
+  /// Optional name, for logging.
+  late String name = " ";
+
+  /// This *must* be called before the variable is worked with.
+  void init() {
+    for (var fuzzySet in sets) {
+      fuzzySet.variable = this;
+    }
+  }
+
+  /// Assigns the variable with a crisp value (that has a degree of membership
+  /// in various FuzzySets of the variable). This creates a [FuzzyValue] which
+  /// can then be used to resolve other variables using fuzzy rules.
+  FuzzyValue<T> assign(T crispValue) {
+    var fuzzyValue = FuzzyValue<T>(this, crispValue);
+    return fuzzyValue;
+  }
+
+  /// Creates a blank [FuzzyValue] from this variable. This blank value can be
+  /// then used as output variable for a [FuzzyRuleBase.resolve] method,
+  /// and is filled with degrees of truth according to a fuzzy rules.
+  FuzzyValue<T> createOutputPlaceholder() {
+    var output = FuzzyValue<T>(this, null);
+    return output;
+  }
+}
