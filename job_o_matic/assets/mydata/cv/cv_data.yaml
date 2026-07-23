@@ -1,0 +1,59 @@
+# CV-Daten – Strukturierte Bewerbungsdaten
+# Wird von CvDataParser eingelesen und in CvData-Modelle deserialisiert.
+---
+personal_data:
+  first_name: "Matthias"
+  last_name: "Struck"
+  email: "matthias.struck@example.com"
+  phone: "+49 123 4567890"
+  address: "Musterstraße 1, 12345 Berlin"
+  photo_path: "assets/mydata/cv/MatthiasStruck.jpg"
+
+work_experience:
+  - company: "Tech GmbH"
+    position: "Senior Softwareentwickler"
+    start_date: "2023-01-01"
+    end_date: null
+    description: >
+      Entwicklung von Flutter-Apps, Architektur-Entscheidungen,
+      Code-Reviews und Mentoring.
+  - company: "Web Solutions AG"
+    position: "Softwareentwickler"
+    start_date: "2019-06-01"
+    end_date: "2022-12-31"
+    description: >
+      Full-Stack-Entwicklung mit React und Node.js,
+      Datenbankdesign, CI/CD-Pipeline-Aufbau.
+  - company: "StartUp GmbH"
+    position: "Junior Developer"
+    start_date: "2017-03-01"
+    end_date: "2019-05-31"
+    description: >
+      Erste Berufserfahrung in der Webentwicklung,
+      agile Methoden (Scrum), TDD.
+
+education:
+  - institution: "Technische Universität Berlin"
+    degree: "Bachelor of Science"
+    start_date: "2013-10-01"
+    end_date: "2017-02-28"
+    field: "Informatik"
+  - institution: "Gymnasium Berlin-Mitte"
+    degree: "Abitur"
+    start_date: "2005-08-01"
+    end_date: "2013-06-30"
+    field: null
+
+skills:
+  - name: "Flutter / Dart"
+    proficiency: 0.95
+  - name: "React / TypeScript"
+    proficiency: 0.85
+  - name: "Node.js"
+    proficiency: 0.80
+  - name: "SQL / Datenbanken"
+    proficiency: 0.75
+  - name: "CI/CD (GitHub Actions)"
+    proficiency: 0.70
+  - name: "Agile Methoden"
+    proficiency: 0.85
