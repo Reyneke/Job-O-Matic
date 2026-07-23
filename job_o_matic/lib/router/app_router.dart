@@ -8,15 +8,15 @@ import '../data/repositories/job_repository.dart';
 
 /// Riverpod provider for the GoRouter instance.
 final goRouterProvider = Provider<GoRouter>((ref) {
-  final jobRepository = ref.watch(jobRepositoryProvider);
-
   return GoRouter(
     initialLocation: '/',
     redirect: (context, state) {
       final isApplicationsRoute = state.matchedLocation == '/applications' ||
           state.matchedLocation.startsWith('/applications/');
       if (isApplicationsRoute) {
-        if (!jobRepository.hasValidApplications) {
+        // Read current repository state dynamically on every navigation
+        final repo = ref.read(jobRepositoryProvider);
+        if (!repo.hasValidApplications) {
           return '/';
         }
       }

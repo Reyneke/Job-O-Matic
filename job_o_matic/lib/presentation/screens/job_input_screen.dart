@@ -8,6 +8,7 @@ import '../../data/repositories/job_repository.dart';
 ///
 /// Allows the user to enter one or more job URLs in a textarea.
 /// URLs are validated and persisted before navigating to the application list.
+/// Also shows already adopted jobs from the search screen.
 class JobInputScreen extends ConsumerStatefulWidget {
   const JobInputScreen({super.key});
 
@@ -18,7 +19,7 @@ class JobInputScreen extends ConsumerStatefulWidget {
 class _JobInputScreenState extends ConsumerState<JobInputScreen> {
   final Logger _log = Logger('JobInputScreen');
   final TextEditingController _urlController = TextEditingController();
-  bool _isValidating = false; // ignore: prefer_final_fields
+  bool _isValidating = false;
 
   @override
   void dispose() {
@@ -40,7 +41,6 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
     for (final line in lines) {
       final uri = Uri.tryParse(line);
       if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
-        // Remove trailing slash and normalize
         String normalized = uri.toString();
         if (normalized.endsWith('/')) {
           normalized = normalized.substring(0, normalized.length - 1);
@@ -53,7 +53,8 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
       }
     }
 
-    _log.info('URL-Validierung: ${validUrls.length} gültig, ${invalidUrls.length} ungültig');
+    _log.info(
+        'URL-Validierung: ${validUrls.length} gültig, ${invalidUrls.length} ungültig');
     return validUrls;
   }
 
@@ -80,6 +81,11 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final repo = ref.watch(jobRepositoryProvider);
+    final validatedUrls = repo.validatedUrls;
+    final selectedJobIds = repo.selectedJobIds;
+    final hasAdoptedItems =
+        validatedUrls.isNotEmpty || selectedJobIds.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -107,13 +113,15 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
 
             // URL Textarea
             Expanded(
+              flex: 2,
               child: TextField(
                 controller: _urlController,
                 maxLines: null,
                 expands: true,
                 textAlignVertical: TextAlignVertical.top,
                 decoration: const InputDecoration(
-                  hintText: 'https://example.com/job/123\nhttps://example.com/job/456',
+                  hintText:
+                      'https://example.com/job/123\nhttps://example.com/job/456',
                   border: OutlineInputBorder(),
                   labelText: 'Stellen-URLs',
                 ),
@@ -122,6 +130,76 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
               ),
             ),
             const SizedBox(height: 16),
+
+            // Already added items list
+            if (hasAdoptedItems) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Übernommene Stellen:',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (validatedUrls.isNotEmpty) ...[
+                      ...validatedUrls.map(
+                        (url) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.link, size: 16),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  url,
+                                  style: theme.textTheme.bodySmall,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (selectedJobIds.isNotEmpty) ...[
+                      if (validatedUrls.isNotEmpty)
+                        const Divider(height: 8),
+                      ...selectedJobIds.map(
+                        (id) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.search, size: 16),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Job-ID: $id',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Text(
+                      '${validatedUrls.length + selectedJobIds.length} Stelle(n) bereit zur Verarbeitung',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // Action buttons
             Row(
@@ -136,7 +214,9 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: _isValidating ? null : _onContinue,
+                    onPressed: (_isValidating || !hasAdoptedItems)
+                        ? null
+                        : () => context.go('/applications'),
                     icon: _isValidating
                         ? const SizedBox(
                             width: 18,
@@ -144,10 +224,23 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.arrow_forward),
-                    label: const Text('Weiter'),
+                    label: Text(hasAdoptedItems ? 'Zur Verarbeitung' : 'Weiter'),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            // Continue button for manual URL entry
+            FilledButton.tonalIcon(
+              onPressed: _isValidating ? null : _onContinue,
+              icon: _isValidating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.add_link),
+              label: const Text('URLs hinzufügen & weiter'),
             ),
           ],
         ),

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:logging/logging.dart';
@@ -22,9 +23,31 @@ class DatabaseHelper {
   }
 
   /// Öffnet (oder erstellt) die Datenbank. Idempotent.
+  /// Löscht die alte DB bei Schema-Änderungen (Entwicklung).
   Future<Database> get database async {
-    _database ??= await _initDatabase();
+    if (_database == null) {
+      _database = await _initDatabase();
+    }
     return _database!;
+  }
+
+  /// Löscht die bestehende Datenbank (für Entwicklung/Reset).
+  Future<void> deleteDatabaseFile() async {
+    await close();
+    final dbPath = await getDatabasesPath();
+    final path = p.join(dbPath, 'job_o_matic.db');
+    final file = File(path);
+    if (await file.exists()) {
+      await file.delete();
+      _log.info('Datenbank-Datei gelöscht: $path');
+    }
+  }
+
+  /// Erzwingt einen kompletten Reset (DB löschen + neu erstellen).
+  Future<void> forceReset() async {
+    await deleteDatabaseFile();
+    _database = null;
+    _log.info('DB-Reset abgeschlossen');
   }
 
   Future<Database> _initDatabase() async {

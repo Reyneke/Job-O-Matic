@@ -56,7 +56,7 @@ class DatabaseRepository {
     final db = await _dbHelper.database;
     await db.update(
       'applications',
-      _applicationToRow(app),
+      _applicationToRowForUpdate(app),
       where: 'id = ?',
       whereArgs: [app.id],
     );
@@ -176,6 +176,17 @@ class DatabaseRepository {
   }
 
   // ---------------------------------------------------------------------------
+  // RESET
+  // ---------------------------------------------------------------------------
+
+  /// Löscht die gesamte Datenbankdatei und erzwingt Neuerstellung.
+  Future<void> forceResetDatabase() async {
+    final dbHelper = _dbHelper;
+    await dbHelper.forceReset();
+    _log.info('Datenbank komplett zurückgesetzt');
+  }
+
+  // ---------------------------------------------------------------------------
   // CV DATA
   // ---------------------------------------------------------------------------
 
@@ -205,17 +216,28 @@ class DatabaseRepository {
   // KONVERTER
   // ---------------------------------------------------------------------------
 
-  Map<String, dynamic> _applicationToRow(Application app) => {
-        'id': app.id,
-        'job_title': app.jobTitle,
-        'company': app.company,
-        'job_url': app.jobUrl,
-        'status': app.status.name,
-        'pdf_path': app.pdfPath,
-        'error_message': app.errorMessage,
-        'created_at': app.createdAt.toIso8601String(),
-        'completed_at': app.completedAt?.toIso8601String(),
-      };
+  /// Converts Application to DB row. Excludes `id` for INSERT (AUTOINCREMENT).
+  Map<String, dynamic> _applicationToRow(Application app,
+      {bool includeId = false}) {
+    final row = <String, dynamic>{
+      'job_title': app.jobTitle,
+      'company': app.company,
+      'job_url': app.jobUrl,
+      'status': app.status.name,
+      'pdf_path': app.pdfPath,
+      'error_message': app.errorMessage,
+      'created_at': app.createdAt.toIso8601String(),
+      'completed_at': app.completedAt?.toIso8601String(),
+    };
+    if (includeId) {
+      row['id'] = app.id;
+    }
+    return row;
+  }
+
+  /// Converts Application to DB row for UPDATE (includes id).
+  Map<String, dynamic> _applicationToRowForUpdate(Application app) =>
+      _applicationToRow(app, includeId: true);
 
   Application _rowToApplication(Map<String, dynamic> row) => Application(
         id: row['id'] as int,

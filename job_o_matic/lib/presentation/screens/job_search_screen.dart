@@ -23,6 +23,7 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
   bool _isSearching = false;
 
   final List<Map<String, String>> _searchResults = [];
+  int _adoptedJobCount = 0;
 
   @override
   void dispose() {
@@ -46,16 +47,32 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
     }
 
     setState(() => _isSearching = true);
-    _log.info('Jobsuche gestartet: "$jobDesc", Ort: "$location", Umkreis: ${_radius}km');
+    _log.info(
+        'Jobsuche gestartet: "$jobDesc", Ort: "$location", Umkreis: ${_radius}km');
 
     // Simulate API search (placeholder for real API integration)
     await Future.delayed(const Duration(seconds: 2));
 
     // Mock results (will be replaced by actual API calls later)
     final mockResults = [
-      {'title': 'Softwareentwickler (m/w/d)', 'company': 'Tech GmbH', 'location': location.isNotEmpty ? location : 'Berlin', 'id': 'job_001'},
-      {'title': 'Flutter Developer (m/w/d)', 'company': 'App Factory', 'location': location.isNotEmpty ? location : 'Berlin', 'id': 'job_002'},
-      {'title': 'Full Stack Developer (m/w/d)', 'company': 'Web Solutions AG', 'location': location.isNotEmpty ? location : 'Berlin', 'id': 'job_003'},
+      {
+        'title': 'Softwareentwickler (m/w/d)',
+        'company': 'Tech GmbH',
+        'location': location.isNotEmpty ? location : 'Berlin',
+        'id': 'job_001'
+      },
+      {
+        'title': 'Flutter Developer (m/w/d)',
+        'company': 'App Factory',
+        'location': location.isNotEmpty ? location : 'Berlin',
+        'id': 'job_002'
+      },
+      {
+        'title': 'Full Stack Developer (m/w/d)',
+        'company': 'Web Solutions AG',
+        'location': location.isNotEmpty ? location : 'Berlin',
+        'id': 'job_003'
+      },
     ];
 
     setState(() {
@@ -66,16 +83,30 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
     _log.info('Jobsuche abgeschlossen: ${mockResults.length} Ergebnisse');
   }
 
-  void _adoptResults(List<String> selectedIds) {
-    ref.read(jobRepositoryProvider).addJobsFromSearch(selectedIds);
-    _log.info('Jobs übernommen: ${selectedIds.length}');
+  void _adoptResults(List<Map<String, String>> jobs,
+      {bool navigateToApplications = false}) {
+    final repo = ref.read(jobRepositoryProvider);
+    for (final job in jobs) {
+      repo.addApplication(
+        jobTitle: job['title'] ?? 'Unbekannte Stelle',
+        company: job['company'] ?? 'Unbekanntes Unternehmen',
+        jobUrl: '',
+      );
+    }
+    setState(() => _adoptedJobCount += jobs.length);
+    _log.info('Jobs übernommen: ${jobs.length}');
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${selectedIds.length} Job(s) übernommen.'),
+        content: Text('${jobs.length} Job(s) übernommen.'),
         backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
       ),
     );
+
+    if (navigateToApplications) {
+      context.go('/applications');
+    }
   }
 
   @override
@@ -174,9 +205,10 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
                     child: ListTile(
                       leading: const Icon(Icons.business_center),
                       title: Text(result['title']!),
-                      subtitle: Text('${result['company']} – ${result['location']}'),
+                      subtitle:
+                          Text('${result['company']} – ${result['location']}'),
                       trailing: FilledButton.tonalIcon(
-                        onPressed: () => _adoptResults([result['id']!]),
+                        onPressed: () => _adoptResults([result]),
                         icon: const Icon(Icons.add, size: 18),
                         label: const Text('Übernehmen'),
                       ),
@@ -185,10 +217,25 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: () => _adoptResults(
-                    _searchResults.map((r) => r['id']!).toList()),
+                    _searchResults,
+                    navigateToApplications: true),
                 icon: const Icon(Icons.download_done),
                 label: const Text('Alle übernehmen & weiter'),
               ),
+              // Weiter-Button, wenn bereits Jobs übernommen wurden
+              if (_adoptedJobCount > 0) ...[
+                const SizedBox(height: 16),
+                Center(
+                  child: FilledButton.icon(
+                    onPressed: () => context.go('/applications'),
+                    icon: const Icon(Icons.arrow_forward),
+                    label: const Text('Weiter zur Verarbeitung'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                  ),
+                ),
+              ],
             ],
 
             // Empty state
@@ -198,7 +245,9 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
                   padding: const EdgeInsets.all(32.0),
                   child: Column(
                     children: [
-                      Icon(Icons.search_off, size: 64, color: theme.colorScheme.onSurfaceVariant),
+                      Icon(Icons.search_off,
+                          size: 64,
+                          color: theme.colorScheme.onSurfaceVariant),
                       const SizedBox(height: 16),
                       Text(
                         'Geben Sie Suchkriterien ein,\num passende Stellen zu finden.',

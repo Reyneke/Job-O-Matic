@@ -1,12 +1,15 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../data/repositories/job_repository.dart';
 import '../../models/application.dart';
 
 /// Screen 3a: Detail view of a single application.
 ///
-/// Shows PDF preview (placeholder), metadata,
+/// Shows PDF preview, metadata,
 /// and allows download, regeneration, or deletion.
 class ApplicationDetailScreen extends ConsumerWidget {
   final int applicationId;
@@ -40,7 +43,7 @@ class ApplicationDetailScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               FilledButton(
-                onPressed: () => context.go('/applications'),
+                onPressed: () => context.pop(),
                 child: const Text('Zurück zur Übersicht'),
               ),
             ],
@@ -49,12 +52,15 @@ class ApplicationDetailScreen extends ConsumerWidget {
       );
     }
 
+    final hasPdf = application.pdfPath != null &&
+        application.status == ApplicationStatus.completed;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(application.jobTitle),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/applications'),
+          onPressed: () => context.pop(),
         ),
       ),
       body: SingleChildScrollView(
@@ -131,6 +137,13 @@ class ApplicationDetailScreen extends ConsumerWidget {
                         'Abgeschlossen: ${_formatDate(application.completedAt!)}',
                         style: theme.textTheme.bodySmall,
                       ),
+                    if (application.pdfPath != null)
+                      Text(
+                        'PDF: ${application.pdfPath!.split('/').last}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
                     if (application.errorMessage != null) ...[
                       const SizedBox(height: 8),
                       Container(
@@ -153,76 +166,117 @@ class ApplicationDetailScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
 
-            // PDF Preview placeholder
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('PDF-Vorschau',
-                        style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 16),
-                    Container(
-                      height: 400,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: theme.colorScheme.outlineVariant,
+            // PDF Preview
+            if (hasPdf)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text('PDF-Vorschau',
+                              style: theme.textTheme.titleMedium),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.share),
+                            tooltip: 'PDF teilen',
+                            onPressed: () => _sharePdf(application.pdfPath!),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.open_in_new),
+                            tooltip: 'Dateiordner öffnen',
+                            onPressed: () => _openFile(application.pdfPath!),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 500,
+                        child: PdfPreview(
+                          build: (format) async {
+                            final file = File(application.pdfPath!);
+                            return file.readAsBytes();
+                          },
+                          allowPrinting: true,
+                          allowSharing: true,
+                          pdfFileName: 'Bewerbung_${application.company}',
                         ),
                       ),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.picture_as_pdf,
-                                size: 64,
-                                color: theme.colorScheme.onSurfaceVariant),
-                            const SizedBox(height: 16),
-                            Text(
-                              application.status == ApplicationStatus.completed
-                                  ? 'PDF-Vorschau wird hier angezeigt'
-                                  : 'PDF wird noch generiert...',
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
+
+            // Fallback wenn kein PDF
+            if (!hasPdf && application.status == ApplicationStatus.completed)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Icon(Icons.picture_as_pdf,
+                          size: 48, color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(height: 8),
+                      const Text('PDF-Datei nicht gefunden'),
+                      const SizedBox(height: 8),
+                      FilledButton.tonal(
+                        onPressed: () {
+                          repo.updateApplicationStatus(
+                            applicationId,
+                            ApplicationStatus.queued,
+                            pdfPath: null,
+                          );
+                        },
+                        child: const Text('Erneut generieren'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            if (application.status == ApplicationStatus.queued ||
+                application.status == ApplicationStatus.processing)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 16),
+                        Text(
+                          application.status == ApplicationStatus.processing
+                              ? 'PDF wird generiert...'
+                              : 'Wartet auf Generierung...',
+                          style: theme.textTheme.bodyLarge,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
             const SizedBox(height: 16),
 
             // Action buttons
             Row(
               children: [
-                if (application.status == ApplicationStatus.completed ||
-                    application.status == ApplicationStatus.exported)
+                if (hasPdf)
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('PDF wird heruntergeladen...'),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.download),
-                      label: const Text('Als PDF speichern'),
+                      onPressed: () => _sharePdf(application.pdfPath!),
+                      icon: const Icon(Icons.share),
+                      label: const Text('PDF teilen'),
                     ),
                   ),
-                if (application.status == ApplicationStatus.completed ||
-                    application.status == ApplicationStatus.exported) ...[
-                  const SizedBox(width: 12),
+                if (hasPdf) const SizedBox(width: 12),
+                if (hasPdf)
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        showDialog(
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
                           context: context,
                           builder: (ctx) => AlertDialog(
                             title: const Text('Erneut generieren'),
@@ -231,35 +285,43 @@ class ApplicationDetailScreen extends ConsumerWidget {
                             ),
                             actions: [
                               TextButton(
-                                onPressed: () => Navigator.pop(ctx),
+                                onPressed: () => Navigator.pop(ctx, false),
                                 child: const Text('Abbrechen'),
                               ),
                               FilledButton(
-                                onPressed: () {
-                                  repo.updateApplicationStatus(
-                                    applicationId,
-                                    ApplicationStatus.queued,
-                                    pdfPath: null,
-                                  );
-                                  Navigator.pop(ctx);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content:
-                                          Text('Neugenerierung gestartet.'),
-                                    ),
-                                  );
-                                },
+                                onPressed: () => Navigator.pop(ctx, true),
                                 child: const Text('Erneut generieren'),
                               ),
                             ],
                           ),
                         );
+                        if (confirmed == true) {
+                          try {
+                            await repo.generatePdf(applicationId);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('PDF erfolgreich generiert.'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Fehler: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        }
                       },
                       icon: const Icon(Icons.refresh),
                       label: const Text('Erneut generieren'),
                     ),
                   ),
-                ],
               ],
             ),
             if (application.status == ApplicationStatus.failed) ...[
@@ -301,7 +363,7 @@ class ApplicationDetailScreen extends ConsumerWidget {
                         onPressed: () {
                           repo.removeApplication(applicationId);
                           Navigator.pop(ctx);
-                          context.go('/applications');
+                          context.pop();
                         },
                         child: const Text('Löschen'),
                       ),
@@ -320,6 +382,27 @@ class ApplicationDetailScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _sharePdf(String pdfPath) async {
+    final file = File(pdfPath);
+    if (await file.exists()) {
+      await Share.shareXFiles(
+        [XFile(pdfPath)],
+        text: 'Bewerbungsunterlagen',
+      );
+    }
+  }
+
+  void _openFile(String pdfPath) {
+    try {
+      final file = File(pdfPath);
+      final folder = file.parent.absolute.path;
+      // Öffne den übergeordneten Ordner im Explorer
+      Process.start('explorer', [folder]);
+    } catch (e) {
+      // Ignore on platforms without explorer
+    }
   }
 
   Widget _statusIcon(ApplicationStatus status) {
