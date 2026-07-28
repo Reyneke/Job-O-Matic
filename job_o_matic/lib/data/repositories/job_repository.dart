@@ -29,6 +29,9 @@ class JobRepository extends ChangeNotifier {
   /// Currently selected job IDs from search (Screen 2 → Screen 3).
   final List<String> _selectedJobIds = [];
 
+  /// Auto-saved input text from the URL textarea (Screen 1).
+  String? _autoSavedInput;
+
   /// Whether the repository has been initialized from database.
   bool _initialized = false;
 
@@ -43,6 +46,9 @@ class JobRepository extends ChangeNotifier {
             );
 
   /// Initialize repository from database (load all persisted data).
+  ///
+  /// Should be called once at app startup, typically by the first screen
+  /// that needs access to persisted data.
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
@@ -54,11 +60,13 @@ class JobRepository extends ChangeNotifier {
         _dbRepo.loadApplications(),
         _dbRepo.loadValidatedUrls(),
         _dbRepo.loadCvData(),
+        _dbRepo.loadFilter('autosaved_input'),
       ]);
 
       _applications.addAll(results[0] as List<Application>);
       _validatedUrls.addAll(results[1] as List<String>);
       _cvData = results[2] as CvData?;
+      _autoSavedInput = results[3] as String?;
 
       _log.info('JobRepository initialisiert: '
           '${_applications.length} Applications, '
@@ -69,6 +77,9 @@ class JobRepository extends ChangeNotifier {
       _log.severe('Fehler bei JobRepository-Initialisierung: $e');
     }
   }
+
+  /// Returns whether the repository has been initialized.
+  bool get isInitialized => _initialized;
 
   // -- URL Management --
 
@@ -126,6 +137,7 @@ class JobRepository extends ChangeNotifier {
         jobUrl: url,
       );
       newApps.add(app);
+      _log.fine('Applikation aus URL erstellt: $url');
     }
     _log.info('Applikationen erstellt: ${newApps.length}');
 
@@ -142,20 +154,27 @@ class JobRepository extends ChangeNotifier {
     required String company,
     required String jobUrl,
   }) {
+    final now = DateTime.now();
     final app = Application(
-      id: 0, // DB-generated via AUTOINCREMENT
+      id: 0, // Placeholder — DB AUTOINCREMENT assigns real ID
       jobTitle: jobTitle,
       company: company,
       jobUrl: jobUrl,
-      createdAt: DateTime.now(),
+      createdAt: now,
     );
+
+    // Insert into DB and update the local copy with the real ID
     _dbRepo.insertApplication(app).then((dbId) {
-      final index = _applications.indexWhere((a) => a.id == 0 && a.createdAt == app.createdAt);
+      final index = _applications.indexWhere((a) =>
+          a.id == 0 &&
+          a.createdAt == now &&
+          a.jobUrl == jobUrl);
       if (index >= 0) {
         final updated = _applications[index].copyWith(id: dbId);
         _applications[index] = updated;
       }
     });
+
     _applications.add(app);
     return app;
   }
@@ -285,6 +304,18 @@ class JobRepository extends ChangeNotifier {
   /// Get CV data.
   CvData? get cvData => _cvData;
 
+  // -- Autosave (Screen 1) --
+
+  /// Get last auto-saved input text.
+  String? get autoSavedInput => _autoSavedInput;
+
+  /// Save current input text for later restoration.
+  void saveAutoSavedInput(String input) {
+    _autoSavedInput = input;
+    // Persist to database for survival across restarts
+    _dbRepo.saveFilter('autosaved_input', input);
+  }
+
   // -- Search (Screen 2) --
 
   /// Add job IDs from search results.
@@ -307,17 +338,26 @@ class JobRepository extends ChangeNotifier {
   /// Create applications from selected job IDs (from search).
   List<Application> createApplicationsFromSelectedJobs() {
     final newApps = <Application>[];
+    final now = DateTime.now();
     for (final jobId in _selectedJobIds) {
       final app = Application(
-        id: _nextId++,
+        id: 0, // Placeholder — DB AUTOINCREMENT assigns real ID
         jobTitle: 'Stelle $jobId',
         company: 'Unbekanntes Unternehmen',
         jobUrl: '',
-        createdAt: DateTime.now(),
+        createdAt: now,
       );
       _applications.add(app);
       newApps.add(app);
-      _dbRepo.insertApplication(app);
+      _dbRepo.insertApplication(app).then((dbId) {
+        final index = _applications.indexWhere((a) =>
+            a.id == 0 &&
+            a.createdAt == now &&
+            a.jobTitle == 'Stelle $jobId');
+        if (index >= 0) {
+          _applications[index] = _applications[index].copyWith(id: dbId);
+        }
+      });
     }
     _log.info('Applikationen aus Jobsuche erstellt: ${newApps.length}');
 
@@ -334,6 +374,7 @@ class JobRepository extends ChangeNotifier {
     _validatedUrls.clear();
     _selectedJobIds.clear();
     _cvData = null;
+    _initialized = false;
     await _dbRepo.forceResetDatabase();
     _log.info('Alle Daten zurückgesetzt');
     notifyListeners();
@@ -356,8 +397,6 @@ class JobRepository extends ChangeNotifier {
   }
 
   // -- Internal --
-
-  int _nextId = 1;
 
   String _normalizeUrl(String url) {
     try {

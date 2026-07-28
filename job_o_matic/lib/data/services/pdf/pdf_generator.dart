@@ -23,16 +23,12 @@ class PdfGenerator {
   final CvGenerator? _cvGenerator;
 
   PdfGenerator({
-    required TemplateLoader templateLoader,
-    required TemplateRenderer templateRenderer,
-    CoverPageGenerator? coverPageGenerator,
-    CoverLetterGenerator? coverLetterGenerator,
-    CvGenerator? cvGenerator,
-  })  : _templateLoader = templateLoader,
-        _templateRenderer = templateRenderer,
-        _coverPageGenerator = coverPageGenerator,
-        _coverLetterGenerator = coverLetterGenerator,
-        _cvGenerator = cvGenerator;
+    required this._templateLoader,
+    required this._templateRenderer,
+    this._coverPageGenerator,
+    this._coverLetterGenerator,
+    this._cvGenerator,
+  });
 
   /// Generiert eine vollständige Bewerbung als PDF und gibt den Dateipfad zurück.
   Future<String> generateApplicationPdf({

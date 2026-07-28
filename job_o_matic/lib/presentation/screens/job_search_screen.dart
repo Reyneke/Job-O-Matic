@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import '../../data/repositories/job_repository.dart';
+import '../../core/providers/providers.dart';
 
 /// Screen 2: Job search interface.
 ///
@@ -21,6 +22,7 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
   final TextEditingController _locationController = TextEditingController();
   double _radius = 25;
   bool _isSearching = false;
+  String? _searchError;
 
   final List<Map<String, String>> _searchResults = [];
   int _adoptedJobCount = 0;
@@ -46,41 +48,59 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
       return;
     }
 
-    setState(() => _isSearching = true);
+    setState(() {
+      _isSearching = true;
+      _searchError = null;
+    });
     _log.info(
         'Jobsuche gestartet: "$jobDesc", Ort: "$location", Umkreis: ${_radius}km');
 
-    // Simulate API search (placeholder for real API integration)
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final searchService = ref.read(jobSearchServiceProvider);
+      final result = await searchService.searchJobs(
+        query: jobDesc,
+        location: location.isNotEmpty ? location : null,
+        radius: _radius.round(),
+      );
 
-    // Mock results (will be replaced by actual API calls later)
-    final mockResults = [
-      {
-        'title': 'Softwareentwickler (m/w/d)',
-        'company': 'Tech GmbH',
-        'location': location.isNotEmpty ? location : 'Berlin',
-        'id': 'job_001'
-      },
-      {
-        'title': 'Flutter Developer (m/w/d)',
-        'company': 'App Factory',
-        'location': location.isNotEmpty ? location : 'Berlin',
-        'id': 'job_002'
-      },
-      {
-        'title': 'Full Stack Developer (m/w/d)',
-        'company': 'Web Solutions AG',
-        'location': location.isNotEmpty ? location : 'Berlin',
-        'id': 'job_003'
-      },
-    ];
+      if (!context.mounted) return;
 
-    setState(() {
-      _searchResults.clear();
-      _searchResults.addAll(mockResults);
-      _isSearching = false;
-    });
-    _log.info('Jobsuche abgeschlossen: ${mockResults.length} Ergebnisse');
+      setState(() {
+        _searchResults.clear();
+        _searchResults.addAll(result.jobs.map((job) => {
+              'title': job.title,
+              'company': job.company,
+              'location': job.location ?? (location.isNotEmpty ? location : 'Unbekannt'),
+              'id': job.id,
+            }));
+        _searchError = result.errorMessage;
+        _isSearching = false;
+      });
+      _log.info('Jobsuche abgeschlossen: ${result.jobs.length} Ergebnisse');
+
+      if (_searchError != null && _searchResults.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('API-Fehler: $_searchError'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      _log.severe('Jobsuche fehlgeschlagen: $e');
+      if (!context.mounted) return;
+      setState(() {
+        _isSearching = false;
+        _searchError = 'Unbekannter Fehler: $e';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Fehler bei der Jobsuche: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _adoptResults(List<Map<String, String>> jobs,
@@ -193,6 +213,38 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
             ),
             const SizedBox(height: 24),
 
+            // Error message banner
+            if (_searchError != null && _searchResults.isEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber,
+                        color: theme.colorScheme.onErrorContainer, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'API-Fehler: $_searchError\n\n'
+                        'Hinweis: Die BA-Jobsuche benötigt einen kostenlosen API-Key. '
+                        'Registrieren Sie sich unter https://jobsuche.api.bund.dev/ '
+                        'und speichern Sie den Key als "ba_jobboerse" in den '
+                        'App-Einstellungen (flutter_secure_storage).',
+                        style: TextStyle(
+                          color: theme.colorScheme.onErrorContainer,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // Results
             if (_searchResults.isNotEmpty) ...[
               Text(
@@ -239,7 +291,7 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
             ],
 
             // Empty state
-            if (_searchResults.isEmpty && !_isSearching)
+            if (_searchResults.isEmpty && !_isSearching && _searchError == null)
               Center(
                 child: Padding(
                   padding: const EdgeInsets.all(32.0),

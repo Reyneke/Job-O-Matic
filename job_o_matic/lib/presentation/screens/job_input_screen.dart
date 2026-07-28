@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
+import '../../core/providers/providers.dart';
 import '../../data/repositories/job_repository.dart';
+import '../../data/services/autosave_service.dart';
 
 /// Screen 1: Input mask for job URLs.
 ///
 /// Allows the user to enter one or more job URLs in a textarea.
 /// URLs are validated and persisted before navigating to the application list.
 /// Also shows already adopted jobs from the search screen.
+/// Features Autosave with 5-second debounce for the URL textarea.
 class JobInputScreen extends ConsumerStatefulWidget {
   const JobInputScreen({super.key});
 
@@ -19,10 +22,42 @@ class JobInputScreen extends ConsumerStatefulWidget {
 class _JobInputScreenState extends ConsumerState<JobInputScreen> {
   final Logger _log = Logger('JobInputScreen');
   final TextEditingController _urlController = TextEditingController();
+  AutosaveService? _autosaveService;
   bool _isValidating = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Initialize repository from database when entering the input screen
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(jobRepositoryProvider).initialize();
+      _initAutosave();
+    });
+  }
+
+  void _initAutosave() {
+    _autosaveService = ref.read(autosaveServiceProvider);
+    final repo = ref.read(jobRepositoryProvider);
+
+    // Restore last saved URLs
+    final lastInput = repo.autoSavedInput;
+    if (lastInput != null && lastInput.isNotEmpty) {
+      _urlController.text = lastInput;
+      _log.fine('Autosave: Wiederhergestellte Eingabe');
+    }
+
+    _autosaveService!.start(() async {
+      final urlText = _urlController.text;
+      if (urlText.isNotEmpty) {
+        repo.saveAutoSavedInput(urlText);
+        _log.fine('Autosave: Eingabe gespeichert (${urlText.length} Zeichen)');
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    _autosaveService?.stop();
     _urlController.dispose();
     super.dispose();
   }
@@ -71,8 +106,12 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
       return;
     }
 
+    setState(() => _isValidating = true);
+
     // Store in repository
     ref.read(jobRepositoryProvider).addValidatedUrls(urls);
+
+    setState(() => _isValidating = false);
 
     // Navigate to application list
     context.go('/applications');
@@ -91,6 +130,13 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
       appBar: AppBar(
         title: const Text('Job-O-Matic'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'API-Key Verwaltung',
+            onPressed: () => context.go('/settings'),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

@@ -1,20 +1,30 @@
 import 'dart:convert';
 import 'package:logging/logging.dart';
 import 'api_client.dart';
-import 'api_key_service.dart';
 import '../../models/job_offer.dart';
 
 /// Service für die Bundesagentur für Arbeit (JOBBÖRSE-API).
 ///
-/// Dokumentation: https://jobsuche.api.bund.dev/
+/// API-Dokumentation: https://github.com/bundesAPI/jobsuche-api
+///
+/// **Wichtiger Hinweis zur Authentifizierung:**
+/// Die API verwendet einen **festen, öffentlichen API-Key** – keine individuelle Registrierung nötig.
+/// - Header: `X-API-Key: jobboerse-jobsuche`
+/// - Fallback: `X-API-KEY: jobboerse-jobsuche` (andere Schreibweise)
+///
+/// **Endpunkt:**
+/// - Jobsuche: `/jobboerse/jobsuche-service/pc/v6/jobs`
+/// - Jobdetails: `/jobboerse/jobsuche-service/pc/v4/jobdetails/{base64(refnr)}`
+/// - Logo: `/vermittlung/ag-darstellung-service/ct/v1/arbeitgeberlogo/{hash}`
 class BaApiService {
   final Logger _log = Logger('BaApiService');
   final ApiClient _client;
 
   static const _baseUrl = 'rest.arbeitsagentur.de';
-  static const _searchPath = '/jobsearch/v1/jobsearch';
+  static const _searchPath = '/jobboerse/jobsuche-service/pc/v6/jobs';
+  static const _apiKey = 'jobboerse-jobsuche';
 
-  BaApiService({required ApiClient client}) : _client = client;
+  BaApiService({required this._client});
 
   /// Sucht Stellen über die BA-JOBBÖRSE-API.
   Future<List<JobOffer>> search({
@@ -26,27 +36,30 @@ class BaApiService {
     int size = 20,
   }) async {
     final params = <String, String>{
-      'fulltext': query,
+      'was': query,
       'page': page.toString(),
       'size': size.toString(),
     };
 
     if (location != null && location.isNotEmpty) {
-      params['ort'] = location;
+      params['wo'] = location;
       params['umkreis'] = radius.toString();
     }
 
     if (employmentType == EmploymentType.fullTime) {
-      params['arbeitszeit'] = 'vollzeit';
+      params['arbeitszeit'] = 'vz';
     } else if (employmentType == EmploymentType.partTime) {
-      params['arbeitszeit'] = 'teilzeit';
+      params['arbeitszeit'] = 'tz';
     }
 
     final uri = Uri.https(_baseUrl, _searchPath, params);
 
     final response = await _client.get(
       uri,
-      apiKeyName: ApiKeyService.baApiKey,
+      extraHeaders: {
+        'Accept': 'application/json',
+        'X-API-Key': _apiKey,
+      },
     );
 
     if (response.statusCode != 200) {
@@ -63,6 +76,7 @@ class BaApiService {
 
   List<JobOffer> _parseJobOffers(Map<String, dynamic> data) {
     final results = <JobOffer>[];
+    // Die tatsächliche Response-Struktur kann abweichen – nach Test mit curl prüfen.
     final items = data['stellenangebote'] as List<dynamic>? ?? [];
 
     for (final item in items) {

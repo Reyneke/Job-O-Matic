@@ -28,6 +28,8 @@ dependencies:
   printing: ^5.12.0
   html: ^0.15.4
   connectivity_plus: ^6.0.0
+  mustache_template: ^2.0.0
+  uuid: ^4.0.0
 
 dev_dependencies:
   flutter_test:

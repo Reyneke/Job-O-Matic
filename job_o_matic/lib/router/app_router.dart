@@ -4,6 +4,7 @@ import '../presentation/screens/job_input_screen.dart';
 import '../presentation/screens/job_search_screen.dart';
 import '../presentation/screens/application_list_screen.dart';
 import '../presentation/screens/application_detail_screen.dart';
+import '../presentation/screens/api_key_settings_screen.dart';
 import '../data/repositories/job_repository.dart';
 
 /// Riverpod provider for the GoRouter instance.
@@ -32,6 +33,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/search',
         name: 'jobSearch',
         builder: (context, state) => const JobSearchScreen(),
+      ),
+      GoRoute(
+        path: '/settings',
+        name: 'apiKeySettings',
+        builder: (context, state) => const ApiKeySettingsScreen(),
       ),
       GoRoute(
         path: '/applications',

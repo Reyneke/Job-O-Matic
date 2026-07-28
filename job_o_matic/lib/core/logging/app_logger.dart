@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'dart:io';
 
@@ -29,11 +30,10 @@ class AppLogger {
 
     Logger.root.level = level;
 
-    // Console output (uses debugPrint-compatible output)
+    // Console output (uses debugPrint to avoid interleaving with Flutter output)
     Logger.root.onRecord.listen((record) {
       final message = _formatLog(record);
-      // ignore: avoid_print
-      print(message);
+      debugPrint(message);
     });
 
     // File output (optional)

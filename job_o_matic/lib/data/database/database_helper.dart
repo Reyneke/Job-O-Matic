@@ -25,9 +25,7 @@ class DatabaseHelper {
   /// Öffnet (oder erstellt) die Datenbank. Idempotent.
   /// Löscht die alte DB bei Schema-Änderungen (Entwicklung).
   Future<Database> get database async {
-    if (_database == null) {
-      _database = await _initDatabase();
-    }
+    _database ??= await _initDatabase();
     return _database!;
   }
 
@@ -58,7 +56,7 @@ class DatabaseHelper {
 
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -122,13 +120,65 @@ class DatabaseHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE mail_queue (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid            TEXT    NOT NULL UNIQUE,
+        recipient_email TEXT    NOT NULL,
+        subject         TEXT    NOT NULL,
+        body            TEXT    NOT NULL,
+        pdf_path        TEXT,
+        application_id  INTEGER,
+        status          TEXT    NOT NULL DEFAULT 'pending'
+                        CHECK(status IN ('pending','queued','sending','sent','failed','bounced')),
+        retry_count     INTEGER NOT NULL DEFAULT 0,
+        last_try_at     TEXT,
+        next_try_at     TEXT,
+        error_message   TEXT,
+        created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_mail_queue_status ON mail_queue(status)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_mail_queue_next_try ON mail_queue(next_try_at)
+    ''');
+
     _log.info('Datenbank-Schema erfolgreich erstellt');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     _log.info('Migriere Datenbank: $oldVersion → $newVersion');
-    // Zukünftige Migrationen hier einfügen:
-    // if (oldVersion < 2) { ... }
+    if (oldVersion < 2) {
+      _log.info('Migration auf Version 2: mail_queue-Tabelle hinzufügen');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS mail_queue (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          uuid            TEXT    NOT NULL UNIQUE,
+          recipient_email TEXT    NOT NULL,
+          subject         TEXT    NOT NULL,
+          body            TEXT    NOT NULL,
+          pdf_path        TEXT,
+          application_id  INTEGER,
+          status          TEXT    NOT NULL DEFAULT 'pending'
+                          CHECK(status IN ('pending','queued','sending','sent','failed','bounced')),
+          retry_count     INTEGER NOT NULL DEFAULT 0,
+          last_try_at     TEXT,
+          next_try_at     TEXT,
+          error_message   TEXT,
+          created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_mail_queue_status ON mail_queue(status)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_mail_queue_next_try ON mail_queue(next_try_at)
+      ''');
+    }
   }
 
   Future<void> _onConfigure(Database db) async {

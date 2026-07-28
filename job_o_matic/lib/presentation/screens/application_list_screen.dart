@@ -101,6 +101,7 @@ class _ApplicationListScreenState
       }
     }
 
+    if (!context.mounted) return;
     final completed = repo.applications
         .where((a) => a.status == ApplicationStatus.completed)
         .length;
@@ -162,6 +163,7 @@ class _ApplicationListScreenState
       }
     }
 
+    if (!context.mounted) return;
     if (copiedCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -172,6 +174,7 @@ class _ApplicationListScreenState
       return;
     }
 
+    if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$copiedCount Bewerbung(en) exportiert nach:\n${exportDir.path}'),
@@ -248,7 +251,7 @@ class _ApplicationListScreenState
                 );
                 if (confirmed == true) {
                   await ref.read(jobRepositoryProvider).resetAllData();
-                  context.go('/'); // zurück zur Stelleneingabe
+                  if (context.mounted) context.go('/'); // zurück zur Stelleneingabe
                 }
               } else if (value == 'requeue') {
                 ref.read(jobRepositoryProvider).resetAllToQueued();

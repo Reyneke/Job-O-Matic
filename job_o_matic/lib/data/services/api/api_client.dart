@@ -22,11 +22,10 @@ class ApiClient {
 
   ApiClient({
     required Logger logger,
-    required ApiKeyService keyService,
+    required this._keyService,
     http.Client? client,
     Duration? timeout,
   })  : _log = logger,
-        _keyService = keyService,
         _client = client ?? http.Client(),
         _timeout = timeout ?? defaultTimeout;
 
