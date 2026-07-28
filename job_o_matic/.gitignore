@@ -7,7 +7,6 @@
 .atom/
 .build/
 .buildlog/
-.env/
 .history
 .svn/
 .swiftpm/
@@ -33,6 +32,8 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/.env/
+.env/
 
 # Symbolication related
 app.*.symbols
