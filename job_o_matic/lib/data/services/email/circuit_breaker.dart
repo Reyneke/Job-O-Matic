@@ -34,8 +34,11 @@ class CircuitBreaker {
     return _state != CircuitBreakerState.open;
   }
 
-  /// Aktuellen Zustand abrufen.
-  CircuitBreakerState get state => _state;
+  /// Aktuellen Zustand abrufen (evaluiert vorher, ob Timeout abgelaufen).
+  CircuitBreakerState get state {
+    _evaluateState();
+    return _state;
+  }
 
   /// Erfolgreiche Anfrage melden.
   void onSuccess() {

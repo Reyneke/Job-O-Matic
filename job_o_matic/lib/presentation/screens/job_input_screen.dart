@@ -136,6 +136,15 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
             tooltip: 'API-Key Verwaltung',
             onPressed: () => context.go('/settings'),
           ),
+          // Debug-Test-Runner – per Long-Press erreichbar
+          Builder(builder: (context) {
+            return IconButton(
+              icon: const Icon(Icons.bug_report_outlined, size: 20),
+              tooltip: 'Debug Test Runner (Long-Press)',
+              onPressed: () {},
+              onLongPress: () => context.go('/debug'),
+            );
+          }),
         ],
       ),
       body: Padding(
