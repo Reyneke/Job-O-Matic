@@ -26,7 +26,7 @@ jobs:
           channel: 'stable'
 
       - name: Cache pub dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             job_o_matic/.dart_tool
