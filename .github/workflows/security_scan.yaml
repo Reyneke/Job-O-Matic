@@ -31,7 +31,7 @@ jobs:
         run: dart pub audit || echo "Audit completed with warnings"
 
       - name: Run osv-scanner
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         continue-on-error: true
         with:
           base-ref: ${{ github.base_ref }}
