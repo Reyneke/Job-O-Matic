@@ -4,56 +4,157 @@
 personal_data:
   first_name: "Matthias"
   last_name: "Struck"
-  email: "matthias.struck@example.com"
-  phone: "+49 123 4567890"
-  address: "Musterstraße 1, 12345 Berlin"
+  email: "MatthiasStruck@gmx.net"
+  phone: "030 3337311"
+  address: "Glacisweg 9, 13583 Berlin"
   photo_path: "assets/mydata/cv/MatthiasStruck.jpg"
 
 work_experience:
-  - company: "Tech GmbH"
-    position: "Senior Softwareentwickler"
-    start_date: "2023-01-01"
+  - company: "Pegasus Spiele"
+    position: "Freier Mitarbeiter (Honorarbasis), Redaktion Shadowrun"
+    start_date: "2025-07-16"
     end_date: null
     description: >
-      Entwicklung von Flutter-Apps, Architektur-Entscheidungen,
-      Code-Reviews und Mentoring.
-  - company: "Web Solutions AG"
-    position: "Softwareentwickler"
-    start_date: "2019-06-01"
-    end_date: "2022-12-31"
+      Adventskalender 2025 (Scrum Master), Datapuls "Stadtkrieg" (Autor),
+      Datapuls "Wilde Natur" (Autor), Datapuls "Unterwelt" (Autor),
+      Abenteuer "Der Mitternachtszug" (Product Owner),
+      Abenteuer "Wer es nicht im Kopfe hat ..." (Product Owner).
+  - company: "Dryad"
+    position: "Software Developer"
+    start_date: "2022-10-01"
+    end_date: "2022-11-30"
     description: >
-      Full-Stack-Entwicklung mit React und Node.js,
-      Datenbankdesign, CI/CD-Pipeline-Aufbau.
-  - company: "StartUp GmbH"
-    position: "Junior Developer"
-    start_date: "2017-03-01"
-    end_date: "2019-05-31"
+      Beratung in der Entwicklung eines Konzeptes für einen
+      energieeffizienten Router. Entwurf von Testskripten für die
+      Firmware via Python 3.
+  - company: "Doorbird Home Automation"
+    position: "Software Developer"
+    start_date: "2021-09-01"
+    end_date: "2022-09-30"
     description: >
-      Erste Berufserfahrung in der Webentwicklung,
-      agile Methoden (Scrum), TDD.
+      Erweiterung und Refactoring der Relaisfunktionen der DoorBird IP
+      Türsprechanlagen. Portierung von Firmwarekomponenten auf eine
+      zusätzliche Ambarella-SoC basierende Hardwareplattform.
+      Neu-Implementierung der I²C, Audio- und Videofunktionen des
+      Ambarella SDKs in die DoorBird Firmware.
+  - company: "X2E"
+    position: "Software Developer"
+    start_date: "2021-02-01"
+    end_date: "2021-06-30"
+    description: >
+      Umbau der Onlinesignalinstanz auf ein socketbasiertes
+      Anwendungsprinzip für die Xoraya N4000.
+  - company: "Automatentechnik Baumann"
+    position: "Software Developer"
+    start_date: "2016-03-01"
+    end_date: "2020-09-30"
+    description: >
+      Kommissionierung, Einberufung und Inbetriebnahme von
+      Kreditkartenmodulen (Ingenico, CCV) mit Belegabnahme, international.
+      Erstellung und Umsetzung eines Konzeptes für einen
+      energieeffizienten Router. Wartung und Weiterentwicklung von
+      Fahrscheinentwertern auf Basis einer eZ80 Plattform in Assembler.
+  - company: "Ferchau (bei ATB)"
+    position: "Software Developer"
+    start_date: "2015-11-01"
+    end_date: "2016-03-31"
+    description: >
+      Entwurf: Ansteuerung einer Solarlaterne auf einem Custom Arduino
+      Board mit der Option von Nutzereingaben via Bluetooth und Android App.
+      Fehleranalyse, -behebung und Abarbeitung von Kundenanfragen.
+  - company: "netfabb GmbH (FIT Gruppe)"
+    position: "Software Developer"
+    start_date: "2015-03-01"
+    end_date: "2015-08-31"
+    description: >
+      Erstellung automatischer Testverfahren, u.a. via Sikuli (Jython),
+      Jenkins, Selenium Framework. Prototyp eines Messengersystems
+      unter Lazarus (Delphi / FPC).
+  - company: "Sintermask GmbH (FIT Gruppe)"
+    position: "Software Developer"
+    start_date: "2013-03-01"
+    end_date: "2015-03-31"
+    description: >
+      Übernahme und Weiterentwicklung der Firmware für den 3D Drucker
+      "Fabbster v2", sowie "Fabbster v3" (Prototyp). Entwicklung von
+      Toolchains für ARM Systeme, u.a. auf Basis von Yagarto.
+      Aufbau von Testfeldern in der Produktion.
+  - company: "Handy-games.com GmbH"
+    position: "Mobile Games Coder"
+    start_date: "2011-11-01"
+    end_date: "2012-11-30"
+    description: >
+      Prototypisierung von Apps zur späteren Weiterentwicklung in C,
+      C++, Java, GML / Game Maker Studio. Unterstützung von Lehrlingen.
+      Weiterentwicklung von Prototypen bis hin zum Release.
+  - company: "Kithara Software"
+    position: "Studentischer Mitarbeiter"
+    start_date: "2010-04-01"
+    end_date: "2011-09-30"
+    description: >
+      Aufbau der Testsuite für den EtherCAT Master. Aufbau der Testsuite
+      für das Netzwerkmodul (TCP/IP UDP, RAW). Diplomarbeit, Thema:
+      "Konzept, Entwicklung und Design einer möglichst einfachen BHT
+      Verknüpfung von LabVIEW und EtherCAT mittels des EtherCAT Module
+      von Kithara Software".
 
 education:
-  - institution: "Technische Universität Berlin"
-    degree: "Bachelor of Science"
-    start_date: "2013-10-01"
-    end_date: "2017-02-28"
-    field: "Informatik"
-  - institution: "Gymnasium Berlin-Mitte"
-    degree: "Abitur"
-    start_date: "2005-08-01"
-    end_date: "2013-06-30"
-    field: null
+  - institution: "TFH Berlin"
+    degree: "Diplom-Ingenieur (FH) für technische Informatik"
+    start_date: "2003-09-01"
+    end_date: "2011-10-31"
+    field: "Technische Informatik, Spezialisierung Echtzeitsysteme"
+  - institution: "TFH Berlin"
+    degree: "Studium der Elektronischen Geräte- und Mikrosystemtechnik"
+    start_date: "2001-09-01"
+    end_date: "2003-09-30"
+    field: "Elektronische Geräte- und Mikrosystemtechnik"
+  - institution: "appAkademie"
+    degree: "Moderne Anwendungsentwicklung"
+    start_date: "2026-02-01"
+    end_date: "2026-07-31"
+    field: "KI-gestützte Softwareentwicklung, Dart, Flutter, GIT"
+  - institution: "Skilldrops Akademie"
+    degree: "Professional Scrum Master I"
+    start_date: "2024-01-01"
+    end_date: "2024-02-28"
+    field: "Scrum"
+  - institution: "Skilldrops Akademie"
+    degree: "Professional Scrum Developer I"
+    start_date: "2024-02-01"
+    end_date: "2024-03-31"
+    field: "Scrum"
+  - institution: "Skilldrops Akademie"
+    degree: "Professional Scrum Product Owner I"
+    start_date: "2024-03-01"
+    end_date: "2024-04-30"
+    field: "Scrum"
+  - institution: "Skilldrops Akademie"
+    degree: "Professional Agile Leader I"
+    start_date: "2024-04-01"
+    end_date: "2024-05-31"
+    field: "Agile Methoden"
 
 skills:
-  - name: "Flutter / Dart"
+  - name: "Dart"
     proficiency: 0.95
-  - name: "React / TypeScript"
+  - name: "Flutter"
+    proficiency: 0.90
+  - name: "C / C++"
+    proficiency: 0.90
+  - name: "Python"
     proficiency: 0.85
-  - name: "Node.js"
+  - name: "Java"
+    proficiency: 0.80
+  - name: "C#"
+    proficiency: 0.75
+  - name: "JavaScript"
+    proficiency: 0.70
+  - name: "Assembler (x86, z80)"
     proficiency: 0.80
   - name: "SQL / Datenbanken"
     proficiency: 0.75
-  - name: "CI/CD (GitHub Actions)"
-    proficiency: 0.70
-  - name: "Agile Methoden"
+  - name: "Scrum / Agile"
     proficiency: 0.85
+  - name: "Git / GitHub"
+    proficiency: 0.90

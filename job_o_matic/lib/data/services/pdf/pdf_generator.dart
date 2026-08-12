@@ -40,6 +40,7 @@ class PdfGenerator {
         'PDF-Generierung gestartet für: ${application.jobTitle} bei ${application.company}');
 
     final pdfDocument = pw.Document();
+    var pageCount = 0;
 
     // 1. Deckblatt
     if (_coverPageGenerator != null) {
@@ -52,6 +53,7 @@ class PdfGenerator {
         },
       );
       pdfDocument.addPage(coverPage);
+      pageCount++;
     }
 
     // 2. Anschreiben (mit Template)
@@ -77,15 +79,26 @@ class PdfGenerator {
         subject: 'Bewerbung als ${application.jobTitle}',
       );
       pdfDocument.addPage(letterPage);
+      pageCount++;
     }
 
     // 3. Lebenslauf
     if (_cvGenerator != null) {
       final cvPage = _cvGenerator.build(cvData: cvData);
       pdfDocument.addPage(cvPage);
+      pageCount++;
     }
 
-    // 4. Speichern
+    // 4. Sicherheitscheck: Keine leeren PDFs speichern
+    if (pageCount == 0) {
+      throw StateError(
+        'PDF-Generierung abgebrochen: Keine Seiten hinzugefügt. '
+        'Bitte stellen Sie sicher, dass mindestens ein Generator '
+        '(Deckblatt, Anschreiben oder Lebenslauf) konfiguriert ist.',
+      );
+    }
+
+    // 5. Speichern
     final fileName =
         '${application.id}_${_sanitizeFileName(application.company)}.pdf';
     final directory = await _getApplicationDirectory();
@@ -94,7 +107,7 @@ class PdfGenerator {
     final file = File(filePath);
     await file.writeAsBytes(await pdfDocument.save());
 
-    _log.info('PDF gespeichert: $filePath');
+    _log.info('PDF gespeichert: $filePath ($pageCount Seiten)');
     return filePath;
   }
 

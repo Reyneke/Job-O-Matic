@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import '../../core/providers/providers.dart';
 import '../../data/repositories/job_repository.dart';
 import '../../data/services/autosave_service.dart';
+import '../../data/services/api/job_scraper_service.dart';
 
 /// Screen 1: Input mask for job URLs.
 ///
@@ -93,7 +94,7 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
     return validUrls;
   }
 
-  void _onContinue() {
+  Future<void> _onContinue() async {
     final urls = _validateUrls();
 
     if (urls.isEmpty) {
@@ -109,8 +110,31 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
     setState(() => _isValidating = true);
 
     // Store in repository
-    ref.read(jobRepositoryProvider).addValidatedUrls(urls);
+    final repo = ref.read(jobRepositoryProvider);
+    repo.addValidatedUrls(urls);
 
+    // Job-Details per Scraping extrahieren (Titel, Firma, Ort)
+    try {
+      final scraper = ref.read(jobScraperServiceProvider);
+      final scrapedJobs = await scraper.extractJobs(urls);
+      if (scrapedJobs.isNotEmpty) {
+        final results = <String, JobScrapeResult>{
+          for (final job in scrapedJobs)
+            job.url: JobScrapeResult(
+              title: job.title,
+              company: job.company,
+              location: job.location,
+              description: job.description,
+            ),
+        };
+        repo.saveScrapeResults(results);
+        _log.info('Job-Details extrahiert: ${scrapedJobs.length} von ${urls.length} URLs');
+      }
+    } catch (e) {
+      _log.warning('Scraping fehlgeschlagen – fahre ohne Job-Details fort: $e');
+    }
+
+    if (!mounted) return;
     setState(() => _isValidating = false);
 
     // Navigate to application list

@@ -228,11 +228,9 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'API-Fehler: $_searchError\n\n'
-                        'Hinweis: Die BA-Jobsuche benötigt einen kostenlosen API-Key. '
-                        'Registrieren Sie sich unter https://jobsuche.api.bund.dev/ '
-                        'und speichern Sie den Key als "ba_jobboerse" in den '
-                        'App-Einstellungen (flutter_secure_storage).',
+                          'API-Fehler: $_searchError\n\n'
+                          'Die Jobsuche ist derzeit nicht erreichbar. '
+                          'Bitte versuchen Sie es später erneut.',
                         style: TextStyle(
                           color: theme.colorScheme.onErrorContainer,
                           fontSize: 12,

@@ -76,20 +76,37 @@ class BaApiService {
 
   List<JobOffer> _parseJobOffers(Map<String, dynamic> data) {
     final results = <JobOffer>[];
-    // Die tatsächliche Response-Struktur kann abweichen – nach Test mit curl prüfen.
-    final items = data['stellenangebote'] as List<dynamic>? ?? [];
+    // Verifizierte Response-Struktur (Stand: 2026-07-26):
+    // - Ergebnisliste: data['ergebnisliste']
+    // - Job-ID:        map['referenznummer']
+    // - Titel:         map['stellenangebotsTitel']
+    // - Arbeitgeber:   map['firma']
+    // - Ort:           map['stellenlokationen'][0]['adresse']['ort']
+    // - Datum:         map['datumErsteVeroeffentlichung']
+    // - Beschreibung:  In der Listen-Response nicht enthalten → null
+    final items = data['ergebnisliste'] as List<dynamic>? ?? [];
 
     for (final item in items) {
       try {
         final map = item as Map<String, dynamic>;
+        final refnr = (map['referenznummer'] ?? '').toString();
+        final locations = map['stellenlokationen'] as List<dynamic>? ?? [];
+        final cities = locations.map((loc) {
+          final adresse = (loc as Map<String, dynamic>?)?['adresse']
+              as Map<String, dynamic>?;
+          return adresse?['ort'] as String?;
+        }).whereType<String>().toList();
+
         results.add(JobOffer(
-          id: (map['refnr'] ?? '').toString(),
-          title: (map['titel'] ?? 'Unbekannt') as String,
-          company: (map['arbeitgeber'] ?? 'Unbekannt') as String,
-          location: map['ort'] as String?,
-          description: map['kurzbeschreibung'] as String?,
-          url: _buildJobUrl(map['refnr']?.toString() ?? ''),
-          publishedAt: _parseDate(map['aktuelleVeroeffentlichungsdatum'] as String?),
+          id: refnr,
+          title: (map['stellenangebotsTitel'] ?? 'Unbekannt') as String,
+          company: (map['firma'] ?? 'Unbekannt') as String,
+          location: cities.isNotEmpty ? cities.join(', ') : null,
+          description: null, // Listen-Response enthält keine Beschreibung
+          url: _buildJobUrl(refnr),
+          salaryRange: _parseSalaryRange(map),
+          employmentType: _parseEmploymentType(map),
+          publishedAt: _parseDate(map['datumErsteVeroeffentlichung'] as String?),
           source: 'ba',
         ));
       } catch (e) {
@@ -98,6 +115,36 @@ class BaApiService {
     }
 
     return results;
+  }
+
+  /// Extrahiert die Gehaltsspanne aus `gehaltsspanneVon`/`gehaltsspanneBis`.
+  String? _parseSalaryRange(Map<String, dynamic> map) {
+    final salaryMin = map['gehaltsspanneVon'];
+    final salaryMax = map['gehaltsspanneBis'];
+    if (salaryMin == null && salaryMax == null) return null;
+
+    return '${_formatSalary(salaryMin)} € – ${_formatSalary(salaryMax)} €';
+  }
+
+  /// Formatiert einen Gehaltswert mit Tausender-Trennzeichen.
+  String _formatSalary(dynamic value) {
+    if (value is num) {
+      return value.toStringAsFixed(0).replaceAllMapped(
+            RegExp(r'(\d)(?=(\d{3})+$)'),
+            (m) => '${m[1]}.',
+          );
+    }
+    return value?.toString() ?? '?';
+  }
+
+  /// Ermittelt die Beschäftigungsart aus `arbeitszeitVollzeit`.
+  EmploymentType? _parseEmploymentType(Map<String, dynamic> map) {
+    final isFullTime = map['arbeitszeitVollzeit'] == true;
+    final isPartTime = map['arbeitszeitTeilzeit'] == true;
+    if (isFullTime && isPartTime) return EmploymentType.both;
+    if (isFullTime) return EmploymentType.fullTime;
+    if (isPartTime) return EmploymentType.partTime;
+    return null;
   }
 
   String _buildJobUrl(String refnr) {

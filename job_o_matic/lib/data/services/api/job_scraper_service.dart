@@ -4,6 +4,21 @@ import 'package:html/dom.dart';
 import 'package:logging/logging.dart';
 import '../../models/job_offer.dart';
 
+/// Ergebnis einer Job-Extraktion aus einer Stellen-URL.
+class JobScrapeResult {
+  final String title;
+  final String? company;
+  final String? location;
+  final String? description;
+
+  const JobScrapeResult({
+    required this.title,
+    this.company,
+    this.location,
+    this.description,
+  });
+}
+
 /// Service zum Extrahieren von Job-Daten aus HTML-Seiten (Scraping).
 ///
 /// Wird als Fallback verwendet, wenn keine strukturierte API verfügbar ist.

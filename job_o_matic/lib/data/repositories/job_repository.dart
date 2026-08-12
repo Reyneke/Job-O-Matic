@@ -6,7 +6,11 @@ import '../../models/cv_data.dart';
 import 'database_repository.dart';
 import '../services/pdf/pdf_generator.dart';
 import '../services/pdf/template_loader.dart';
+import '../services/pdf/cover_page_generator.dart';
+import '../services/pdf/cover_letter_generator.dart';
+import '../services/pdf/cv_generator.dart';
 import '../services/cv_data_parser.dart';
+import '../services/api/job_scraper_service.dart';
 
 /// Repository for managing job applications and CV data.
 ///
@@ -32,6 +36,9 @@ class JobRepository extends ChangeNotifier {
   /// Auto-saved input text from the URL textarea (Screen 1).
   String? _autoSavedInput;
 
+  /// Scraped job details for validated URLs (Screen 1 → Screen 3).
+  final Map<String, JobScrapeResult> _scrapeResults = {};
+
   /// Whether the repository has been initialized from database.
   bool _initialized = false;
 
@@ -43,6 +50,9 @@ class JobRepository extends ChangeNotifier {
             PdfGenerator(
               templateLoader: TemplateLoader(),
               templateRenderer: TemplateRenderer(),
+              coverPageGenerator: CoverPageGenerator(),
+              coverLetterGenerator: CoverLetterGenerator(),
+              cvGenerator: CvGenerator(),
             );
 
   /// Initialize repository from database (load all persisted data).
@@ -59,14 +69,12 @@ class JobRepository extends ChangeNotifier {
       final results = await Future.wait([
         _dbRepo.loadApplications(),
         _dbRepo.loadValidatedUrls(),
-        _dbRepo.loadCvData(),
         _dbRepo.loadFilter('autosaved_input'),
       ]);
 
       _applications.addAll(results[0] as List<Application>);
       _validatedUrls.addAll(results[1] as List<String>);
-      _cvData = results[2] as CvData?;
-      _autoSavedInput = results[3] as String?;
+      _autoSavedInput = results[2] as String?;
 
       _log.info('JobRepository initialisiert: '
           '${_applications.length} Applications, '
@@ -127,13 +135,21 @@ class JobRepository extends ChangeNotifier {
 
   // -- Application Management --
 
+  /// Speichert gescrapte Job-Details für validierte URLs.
+  void saveScrapeResults(Map<String, JobScrapeResult> results) {
+    _scrapeResults.addAll(results);
+    _log.info('Scrape-Ergebnisse gespeichert: ${results.length}');
+  }
+
   /// Create applications from validated URLs and persist them.
+  /// Uses scraped job details (title, company, location) when available.
   List<Application> createApplicationsFromUrls() {
     final newApps = <Application>[];
     for (final url in _validatedUrls) {
+      final scraped = _scrapeResults[url];
       final app = _createAndInsert(
-        jobTitle: 'Unbekannte Stelle',
-        company: 'Unbekanntes Unternehmen',
+        jobTitle: scraped?.title ?? 'Unbekannte Stelle',
+        company: scraped?.company ?? 'Unbekanntes Unternehmen',
         jobUrl: url,
       );
       newApps.add(app);
@@ -142,6 +158,7 @@ class JobRepository extends ChangeNotifier {
     _log.info('Applikationen erstellt: ${newApps.length}');
 
     _validatedUrls.clear();
+    _scrapeResults.clear();
     _dbRepo.saveValidatedUrls([]);
 
     if (newApps.isNotEmpty) notifyListeners();
@@ -235,9 +252,12 @@ class JobRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Load CV data from assets YAML file if not already loaded.
+  /// Load CV data from assets YAML file.
+  ///
+  /// The YAML file is the authoritative source of truth. It is always
+  /// re-read to ensure the latest data is used, and the database cache
+  /// is updated accordingly.
   Future<void> _ensureCvDataLoaded() async {
-    if (_cvData != null) return;
     _log.info('CV-Daten werden aus assets/mydata/cv/cv_data.yaml geladen...');
     try {
       final parser = CvDataParser();
