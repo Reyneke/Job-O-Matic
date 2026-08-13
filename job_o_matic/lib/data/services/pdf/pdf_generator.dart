@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:logging/logging.dart';
 import 'package:intl/intl.dart';
@@ -44,6 +46,8 @@ class PdfGenerator {
 
     // 1. Deckblatt
     if (_coverPageGenerator != null) {
+      // Logo/Foto aus photoPath laden (falls vorhanden).
+      final logoBytes = await _loadLogoBytes(cvData.personalData.photoPath);
       final coverPage = _coverPageGenerator.build(
         personalData: cvData.personalData,
         jobInfo: {
@@ -51,6 +55,7 @@ class PdfGenerator {
           'company': application.company,
           'date': DateFormat('dd.MM.yyyy').format(DateTime.now()),
         },
+        logoBytes: logoBytes,
       );
       pdfDocument.addPage(coverPage);
       pageCount++;
@@ -99,8 +104,15 @@ class PdfGenerator {
     }
 
     // 5. Speichern
+    final safeCompany = _sanitizeFileName(application.company);
+    final safeTitle = _sanitizeFileName(application.jobTitle);
+    // Fallback: Wenn Firma unbekannt, Titel verwenden.
+    final namePart = (safeCompany.isEmpty ||
+            safeCompany.toLowerCase().contains('unbekannt'))
+        ? safeTitle
+        : safeCompany;
     final fileName =
-        '${application.id}_${_sanitizeFileName(application.company)}.pdf';
+        '${application.id}_${namePart.isEmpty ? 'Bewerbung' : namePart}.pdf';
     final directory = await _getApplicationDirectory();
     final filePath = '${directory.path}/$fileName';
 
@@ -109,6 +121,18 @@ class PdfGenerator {
 
     _log.info('PDF gespeichert: $filePath ($pageCount Seiten)');
     return filePath;
+  }
+
+  /// Lädt das Logo/Foto aus dem Asset-Pfad, falls vorhanden.
+  Future<Uint8List?> _loadLogoBytes(String? photoPath) async {
+    if (photoPath == null || photoPath.isEmpty) return null;
+    try {
+      final data = await rootBundle.load(photoPath);
+      return data.buffer.asUint8List();
+    } catch (e) {
+      _log.warning('Logo-Asset nicht gefunden: $photoPath ($e)');
+      return null;
+    }
   }
 
   String _sanitizeFileName(String name) {

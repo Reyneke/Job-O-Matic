@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'pdf_utils.dart';
@@ -8,10 +9,27 @@ class CoverPageGenerator {
   pw.MultiPage build({
     required PersonalData personalData,
     required Map<String, dynamic> jobInfo,
+    Uint8List? logoBytes,
   }) {
     return pw.MultiPage(
       pageFormat: PdfUtils.pageFormat,
       margin: const pw.EdgeInsets.all(48),
+      // Fußzeile mit dezenter Seitenzahl (Option A).
+      footer: (context) {
+        String footerText;
+        try {
+          footerText = 'Seite ${context.pageNumber} von ${context.pagesCount}';
+        } catch (_) {
+          footerText = '';
+        }
+        return pw.Align(
+          alignment: pw.Alignment.center,
+          child: pw.Text(
+            footerText,
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+          ),
+        );
+      },
       build: (context) => [
         // Absender (oben links)
         pw.Header(
@@ -24,30 +42,36 @@ class CoverPageGenerator {
             style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
           ),
         ),
-        pw.SizedBox(height: 80),
+        pw.SizedBox(height: 40),
 
-        // Firmenlogo-Platzhalter (zentriert)
+        // Firmenlogo (zentriert) – Bild aus assets/mydata/cv, sonst Platzhalter
         pw.Center(
           child: pw.Container(
             width: 120,
             height: 120,
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: PdfColors.grey300),
-            ),
-            child: pw.Center(
-              child: pw.Text(
-                'Logo',
-                style: const pw.TextStyle(color: PdfColors.grey400),
-              ),
-            ),
+            decoration: logoBytes != null
+                ? null
+                : pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300),
+                  ),
+            child: logoBytes != null
+                ? pw.Image(pw.MemoryImage(logoBytes),
+                    fit: pw.BoxFit.contain)
+                : pw.Center(
+                    child: pw.Text(
+                      'Logo',
+                      style: const pw.TextStyle(color: PdfColors.grey400),
+                    ),
+                  ),
           ),
         ),
-        pw.SizedBox(height: 60),
+        pw.SizedBox(height: 40),
 
-        // Stellenbezeichnung
+        // Stellenbezeichnung – zentriert, auch bei mehrzeiligem Umbruch
         pw.Center(
           child: pw.Text(
             jobInfo['jobTitle'] as String? ?? '',
+            textAlign: pw.TextAlign.center,
             style: pw.TextStyle(
               fontSize: 24,
               fontWeight: pw.FontWeight.bold,
@@ -61,10 +85,11 @@ class CoverPageGenerator {
         pw.Center(
           child: pw.Text(
             jobInfo['company'] as String? ?? '',
+            textAlign: pw.TextAlign.center,
             style: const pw.TextStyle(fontSize: 18, color: PdfColors.grey800),
           ),
         ),
-        pw.SizedBox(height: 40),
+        pw.SizedBox(height: 24),
 
         // Datum
         pw.Center(
@@ -73,26 +98,7 @@ class CoverPageGenerator {
             style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey600),
           ),
         ),
-
-        // Fußzeile
-        ..._buildFooter(context, personalData),
       ],
     );
-  }
-
-  List<pw.Widget> _buildFooter(pw.Context context, PersonalData data) {
-    return [
-      pw.SizedBox(height: 100),
-      pw.Divider(),
-      pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(data.email ?? '',
-              style: const pw.TextStyle(fontSize: 8)),
-          pw.Text(data.phone ?? '',
-              style: const pw.TextStyle(fontSize: 8)),
-        ],
-      ),
-    ];
   }
 }

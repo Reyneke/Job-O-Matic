@@ -11,6 +11,7 @@ import '../services/pdf/cover_letter_generator.dart';
 import '../services/pdf/cv_generator.dart';
 import '../services/cv_data_parser.dart';
 import '../services/api/job_scraper_service.dart';
+import '../services/api/job_title_cleaner.dart';
 
 /// Repository for managing job applications and CV data.
 ///
@@ -147,8 +148,12 @@ class JobRepository extends ChangeNotifier {
     final newApps = <Application>[];
     for (final url in _validatedUrls) {
       final scraped = _scrapeResults[url];
+      final rawTitle = scraped?.title ?? '';
+      final cleanedTitle = rawTitle.isEmpty
+          ? 'Unbekannte Stelle'
+          : JobTitleCleaner.cleanJobTitle(rawTitle);
       final app = _createAndInsert(
-        jobTitle: scraped?.title ?? 'Unbekannte Stelle',
+        jobTitle: cleanedTitle,
         company: scraped?.company ?? 'Unbekanntes Unternehmen',
         jobUrl: url,
       );

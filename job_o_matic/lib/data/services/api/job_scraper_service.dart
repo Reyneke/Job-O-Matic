@@ -3,6 +3,7 @@ import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
 import 'package:logging/logging.dart';
 import '../../models/job_offer.dart';
+import 'job_title_cleaner.dart';
 
 /// Ergebnis einer Job-Extraktion aus einer Stellen-URL.
 class JobScrapeResult {
@@ -82,6 +83,8 @@ class JobScraperService {
       '[class*=company]',
       '[class*=employer]',
       '[class*=arbeitgeber]',
+      '[class*=unternehmen]',
+      '[class*=firma]',
       '[itemprop*=name]',
     ]);
 
@@ -106,18 +109,54 @@ class JobScraperService {
       return null;
     }
 
+    // Jobtitel bereinigen (Webseiten-Suffixe wie "| Jobs at X" entfernen).
+    final cleanedTitle = JobTitleCleaner.cleanJobTitle(title);
+
+    // Fallback für Firma: URL-Domain ableiten, falls keine Firma gefunden.
+    var finalCompany = company;
+    if (finalCompany == null || finalCompany == 'Unbekannt') {
+      finalCompany = _deriveCompanyFromUrl(url);
+    }
+
     final jobId = _generateId(url, title);
 
-    _log.info('Job extrahiert: $title bei $company');
+    _log.info('Job extrahiert: $cleanedTitle bei $finalCompany');
     return JobOffer(
       id: jobId,
-      title: title,
-      company: company ?? 'Unbekannt',
+      title: cleanedTitle,
+      company: finalCompany ?? 'Unbekannt',
       location: location,
       description: description,
       url: url,
       source: 'scrape',
     );
+  }
+
+  /// Leitet einen Firmennamen aus der URL-Domain ab.
+  ///
+  /// Beispiel: `https://jobs.bliq.com/...` -> "Bliq"
+  String? _deriveCompanyFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final host = uri.host.toLowerCase();
+      // Domains wie "www.bliq.de", "jobs.bliq.com", "bliq.com" -> erste Domain
+      final parts = host.split('.');
+      if (parts.length >= 2) {
+        // Entferne typische Subdomains
+        final knownSubdomains = {'www', 'jobs', 'careers', 'karriere', 'apply', 'recruiting', 'hr', 'talent', 'talents', 'stack', 'boards', 'job', 'stellen'};
+        var domainPart = parts[0];
+        while (knownSubdomains.contains(domainPart) && parts.length > 2) {
+          parts.removeAt(0);
+          domainPart = parts[0];
+        }
+        // Erstes Zeichen großschreiben
+        final company = domainPart[0].toUpperCase() + domainPart.substring(1);
+        if (company.isNotEmpty) return company;
+      }
+    } catch (_) {
+      // Nicht-URL-String – ignorieren
+    }
+    return null;
   }
 
   /// Versucht, einen Wert über mehrere CSS-Selektoren zu extrahieren.

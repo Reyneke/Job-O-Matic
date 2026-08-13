@@ -58,3 +58,17 @@ Zusätzlich wurde die CV-Daten aus der **Datenbank gecacht** (`JobRepository.ini
 **Verifikation:**
 - Die alte PDF `assets/mydata/26_Flutter_Entwickler.pdf` sollte gelöscht und neu generiert werden.
 - Nach dem Fix enthält die neue PDF die echten CV-Daten.
+
+## Bug: Deckblatt
+
+1. Anstelle des Platzhalters "Logo" sollte das Bild eingefügt werden, welches unter "assets/mydata/cv" liegt
+
+2. Wenn man das Beispiel "/assets/mydata/28_Unbekannt.pdf" betrachtet, fällt auf, dass di Jobbeschreibung nicht geclippt wird.
+Dort steht "Senior Flutter Developer / Client Engineer, AI-Native and Rust-Friendly (m/f/d) | Jobs at Bliq", wobei "Jobs at Bliq" von der Webseite stammt. Können wir einen Algoyrthmus entwerfen, welcher die Stellenbeschreibung sauber rausclippt und alles, was nicht dazugehört, wie eben das "Jobs at Bliq" rausfiltert?
+
+3. Was bedeutet das "Unbekannt" eine Zeile tiefer? Woher kommt es und wie kann es vermieden oder sinnvoll angepasst werden?
+
+4. In der Fußzeile steht neub voller Name, sowie meine Telefonnummer. Das schaut irgendwie falsch aus. Wie können wir das verbessern?
+
+5. Wäre es klüger, wenn die Zeile "Senior Flutter Developer / Client Engineer,
+AI-Native and Rust-Friendly (m/f/d)" im PDF "/assets/mydata/30_Bliq.pdf" zentriert ist? Generell wirkt das Deckblatt, als wenn die Textzeilen besser über das Blatt verteilt sein können. Wird das dynamisch generiert oder ist das eine fixe Einstellung?
