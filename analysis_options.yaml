@@ -1,0 +1,8 @@
+# Diese analysis_options.yaml gilt für Dateien außerhalb des Flutter-Package
+# job_o_matic/ (insbesondere die assets/-Ordner mit eigenständigen Dart-Dateien).
+#
+# Die assets/ enthalten unabhängige Dart-Pakete (fuzzy_logic) und Theme-Dateien,
+# die nicht Teil des Flutter-Projekts sind und daher nicht analysiert werden dürfen.
+analyzer:
+  exclude:
+    - assets/**

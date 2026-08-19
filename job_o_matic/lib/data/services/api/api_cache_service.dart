@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'package:logging/logging.dart';
 import '../../models/job_offer.dart';
 
@@ -13,7 +12,7 @@ class ApiCacheService {
   final Duration _defaultTtl;
   final int _maxEntries;
 
-  final _cache = LinkedHashMap<String, _CacheEntry>();
+  final _cache = <String, _CacheEntry>{};
   int _hits = 0;
   int _misses = 0;
 
@@ -86,7 +85,6 @@ class ApiCacheService {
   }
 
   void _removeExpired() {
-    final now = DateTime.now();
     _cache.removeWhere((key, entry) {
       if (entry.isExpired) {
         _log.fine('Cache-Eintrag "$key" abgelaufen und entfernt');

@@ -1,6 +1,8 @@
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 import 'package:logging/logging.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'core/logging/app_logger.dart';
@@ -9,20 +11,27 @@ import 'core/providers/providers.dart';
 import 'data/repositories/job_repository.dart';
 import 'router/app_router.dart';
 
-void main() {
+Future<void> main() async {
   // Initialize the logging system
   AppLogger.init(
     level: Level.ALL,
     enableFileLogging: false,
   );
 
-  WidgetsFlutterBinding.ensureInitialized();
+  // Set intl locale BEFORE Widgets initialization (critical for DateFormat on desktop)
+  Intl.defaultLocale = 'de_DE';
 
   // Initialize sqlite for desktop platforms (Windows/Linux/macOS)
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
+
+  // Ensure Flutter binding is initialized
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Load German locale data for intl package (required for DateFormat on desktop)
+  await initializeDateFormatting('de_DE');
 
   runApp(
     const ProviderScope(

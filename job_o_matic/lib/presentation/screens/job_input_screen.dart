@@ -155,6 +155,12 @@ class _JobInputScreenState extends ConsumerState<JobInputScreen> {
         title: const Text('Job-O-Matic'),
         centerTitle: true,
         actions: [
+          // Zur Ergebnisübersicht (Debug-freundlich)
+          IconButton(
+            icon: const Icon(Icons.list_alt),
+            tooltip: 'Ergebnisübersicht',
+            onPressed: () => context.go('/applications'),
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'API-Key Verwaltung',

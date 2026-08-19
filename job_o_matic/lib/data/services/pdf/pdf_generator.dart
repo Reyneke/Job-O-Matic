@@ -76,20 +76,33 @@ class PdfGenerator {
         'company': application.company,
         'date': DateFormat('dd.MM.yyyy').format(DateTime.now()),
         'skills': cvData.skills.map((s) => s.name).join(', '),
+        'relevant_skills': _extractRelevantSkills(
+            application.jobDescription, cvData.skills),
         'experience_years': _calculateTotalExperience(cvData.workExperience),
+        // Individualisierung durch die Stellenbeschreibung (falls vorhanden)
+        'job_description': application.jobDescription ?? '',
+        'job_description_excerpt': _extractDescriptionExcerpt(
+            application.jobDescription),
       });
       final letterPage = _coverLetterGenerator.build(
         personalData: cvData.personalData,
         renderedText: renderedLetter,
         subject: 'Bewerbung als ${application.jobTitle}',
+        company: application.company,
+        companyAddress: application.companyAddress,
       );
       pdfDocument.addPage(letterPage);
       pageCount++;
     }
 
-    // 3. Lebenslauf
+    // 3. Lebenslauf (mit dynamisch sortierten Skills)
     if (_cvGenerator != null) {
-      final cvPage = _cvGenerator.build(cvData: cvData);
+      final prioritizedSkills = _extractRelevantSkillNames(
+          application.jobDescription, cvData.skills);
+      final cvPage = _cvGenerator.build(
+        cvData: cvData,
+        prioritizedSkills: prioritizedSkills,
+      );
       pdfDocument.addPage(cvPage);
       pageCount++;
     }
@@ -121,6 +134,64 @@ class PdfGenerator {
 
     _log.info('PDF gespeichert: $filePath ($pageCount Seiten)');
     return filePath;
+  }
+
+  /// Extrahiert die für die Stelle relevanten Skills aus der CV-Skill-Liste.
+  ///
+  /// Durchsucht die Stellenbeschreibung nach den im CV gelisteten Skills
+  /// und gibt nur die gefundenen zurück (max. 6). Fallback: Alle Skills.
+  String _extractRelevantSkills(String? description, List<Skill> skills) {
+    final names = _extractRelevantSkillNames(description, skills);
+    return names.join(', ');
+  }
+
+  /// Extrahiert die Namen der relevanten Skills (für die CV-Sortierung).
+  ///
+  /// Durchsucht die Stellenbeschreibung nach den im CV gelisteten Skills
+  /// und gibt die gefundenen Namen zurück (max. 6). Fallback: Alle Namen.
+  List<String> _extractRelevantSkillNames(
+      String? description, List<Skill> skills) {
+    if (description == null || description.trim().isEmpty) {
+      return skills.map((s) => s.name).toList();
+    }
+
+    final descLower = description.toLowerCase();
+    final matched = <String>[];
+
+    for (final skill in skills) {
+      if (descLower.contains(skill.name.toLowerCase())) {
+        matched.add(skill.name);
+        if (matched.length >= 6) break;
+      }
+    }
+
+    // Fallback: Wenn keine Skills gefunden wurden, alle Skills nennen.
+    if (matched.isEmpty) {
+      return skills.map((s) => s.name).toList();
+    }
+
+    return matched;
+  }
+
+  /// Extrahiert einen kurzen, prägnanten Ausschnitt aus der Stellenbeschreibung.
+  ///
+  /// Verwendet maximal 2 Sätze / 400 Zeichen, damit das Anschreiben
+  /// nicht überladen wirkt.
+  String _extractDescriptionExcerpt(String? description) {
+    if (description == null || description.trim().isEmpty) {
+      return '';
+    }
+    var text = description.trim();
+    // Auf 2 Sätze kürzen
+    final sentences = text.split(RegExp(r'(?<=[.!?])\s+'));
+    if (sentences.length > 2) {
+      text = sentences.sublist(0, 2).join(' ');
+    }
+    // Maximal 400 Zeichen
+    if (text.length > 400) {
+      text = '${text.substring(0, 397).trimRight()}...';
+    }
+    return text;
   }
 
   /// Lädt das Logo/Foto aus dem Asset-Pfad, falls vorhanden.

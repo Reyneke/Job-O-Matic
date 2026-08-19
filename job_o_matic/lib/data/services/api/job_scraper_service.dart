@@ -9,12 +9,14 @@ import 'job_title_cleaner.dart';
 class JobScrapeResult {
   final String title;
   final String? company;
+  final String? companyAddress;
   final String? location;
   final String? description;
 
   const JobScrapeResult({
     required this.title,
     this.company,
+    this.companyAddress,
     this.location,
     this.description,
   });
@@ -31,6 +33,7 @@ class JobScrapeResult {
 class JobScraperService {
   final Logger _log = Logger('JobScraperService');
   final http.Client _client;
+  String? _lastCompanyAddress;
 
   JobScraperService({http.Client? client})
       : _client = client ?? http.Client();
@@ -104,6 +107,15 @@ class JobScraperService {
       '[class*=address]',
     ]);
 
+    // Firmenadresse extrahieren (falls vorhanden)
+    _lastCompanyAddress = _tryExtract(document, [
+      '[class*=company-address]',
+      '[class*=address]',
+      '[itemprop*=address]',
+      '[class*=kontakt]',
+      '[class*=contact]',
+    ]);
+
     if (title == null) {
       _log.warning('Konnte keinen Job-Titel extrahieren von: $url');
       return null;
@@ -129,6 +141,19 @@ class JobScraperService {
       description: description,
       url: url,
       source: 'scrape',
+    );
+  }
+
+  /// Extrahiert Job-Informationen als JobScrapeResult (für Repository).
+  Future<JobScrapeResult?> extractJobResult(String url) async {
+    final job = await _extractFromUrl(url);
+    if (job == null) return null;
+    return JobScrapeResult(
+      title: job.title,
+      company: job.company,
+      companyAddress: _lastCompanyAddress,
+      location: job.location,
+      description: job.description,
     );
   }
 

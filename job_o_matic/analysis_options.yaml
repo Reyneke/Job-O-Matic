@@ -9,6 +9,14 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# Assets enthalten eigenständige Dart-Pakete (fuzzy_logic) und Theme-Dateien,
+# die nicht Teil des Flutter-Projekts sind und daher nicht analysiert werden dürfen.
+# Excludes werden je nach Analyzer-Kontext unterschiedlich aufgelöst – beide Varianten abdecken.
+analyzer:
+  exclude:
+    - assets/**
+    - ../assets/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

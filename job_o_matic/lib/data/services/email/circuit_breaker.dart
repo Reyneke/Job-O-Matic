@@ -12,7 +12,6 @@ class CircuitBreaker {
   final Logger _log = Logger('CircuitBreaker');
   final int _failureThreshold;
   final Duration _timeout;
-  final Duration _halfOpenMaxAge;
 
   CircuitBreakerState _state = CircuitBreakerState.closed;
   int _failureCount = 0;
@@ -23,10 +22,8 @@ class CircuitBreaker {
   CircuitBreaker({
     int failureThreshold = 5,
     Duration? timeout,
-    Duration? halfOpenMaxAge,
   })  : _failureThreshold = failureThreshold,
-        _timeout = timeout ?? const Duration(seconds: 30),
-        _halfOpenMaxAge = halfOpenMaxAge ?? const Duration(seconds: 60);
+        _timeout = timeout ?? const Duration(seconds: 30);
 
   /// Prüft, ob eine Anfrage durchgelassen werden darf.
   bool get canPass {
@@ -65,7 +62,7 @@ class CircuitBreaker {
     } else if (_failureCount >= _failureThreshold) {
       _tripToOpen();
       _log.warning(
-        'Circuit Breaker: OPEN (${_failureCount} Fehler erreicht)',
+        'Circuit Breaker: OPEN ($_failureCount Fehler erreicht)',
       );
     }
   }

@@ -155,7 +155,9 @@ class JobRepository extends ChangeNotifier {
       final app = _createAndInsert(
         jobTitle: cleanedTitle,
         company: scraped?.company ?? 'Unbekanntes Unternehmen',
+        companyAddress: scraped?.companyAddress,
         jobUrl: url,
+        jobDescription: scraped?.description,
       );
       newApps.add(app);
       _log.fine('Applikation aus URL erstellt: $url');
@@ -175,13 +177,17 @@ class JobRepository extends ChangeNotifier {
     required String jobTitle,
     required String company,
     required String jobUrl,
+    String? companyAddress,
+    String? jobDescription,
   }) {
     final now = DateTime.now();
     final app = Application(
       id: 0, // Placeholder — DB AUTOINCREMENT assigns real ID
       jobTitle: jobTitle,
       company: company,
+      companyAddress: companyAddress,
       jobUrl: jobUrl,
+      jobDescription: jobDescription,
       createdAt: now,
     );
 

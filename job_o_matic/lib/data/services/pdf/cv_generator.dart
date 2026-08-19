@@ -5,6 +5,11 @@ import 'pdf_utils.dart';
 import '../../../models/cv_data.dart';
 
 /// Generator für den Lebenslauf (CV) im PDF-Format.
+///
+/// Design-konsistent mit Deckblatt und Anschreiben:
+/// - Gleiche Fußzeile ("Seite X von Y")
+/// - Gleiche Schriftgrößen und Farben
+/// - Adresse in den Persönlichen Daten enthalten
 class CvGenerator {
   static const _labelWidth = 100.0;
   static const _fontSizeLabel = 10.0;
@@ -15,10 +20,36 @@ class CvGenerator {
   static const _fontSizeDate = 9.0;
   static const _fontSizeCompany = 10.0;
 
-  pw.MultiPage build({required CvData cvData}) {
+  /// Erstellt den Lebenslauf.
+  ///
+  /// [prioritizedSkills] – Skill-Namen, die zuerst angezeigt werden sollen
+  /// (z. B. die in der Stellenbeschreibung geforderten Skills).
+  pw.MultiPage build({
+    required CvData cvData,
+    List<String>? prioritizedSkills,
+  }) {
+    // Skills sortieren: Priorisierte zuerst, Rest alphabetisch danach.
+    final sortedSkills = _sortSkills(cvData.skills, prioritizedSkills);
+
     return pw.MultiPage(
       pageFormat: PdfUtils.pageFormat,
       margin: const pw.EdgeInsets.all(48),
+      // Fußzeile: Identisch zu Deckblatt und Anschreiben.
+      footer: (context) {
+        String footerText;
+        try {
+          footerText = 'Seite ${context.pageNumber} von ${context.pagesCount}';
+        } catch (_) {
+          footerText = '';
+        }
+        return pw.Align(
+          alignment: pw.Alignment.center,
+          child: pw.Text(
+            footerText,
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+          ),
+        );
+      },
       build: (context) => [
         // Überschrift
         pw.Header(
@@ -34,7 +65,7 @@ class CvGenerator {
         ),
         pw.SizedBox(height: 8),
 
-        // Persönliche Daten
+        // Persönliche Daten (inkl. Adresse)
         pw.Header(
           level: 1,
           child: pw.Text('Persönliche Daten',
@@ -43,6 +74,8 @@ class CvGenerator {
                   fontWeight: pw.FontWeight.bold)),
         ),
         _buildInfoRow('Name', cvData.personalData.fullName),
+        if (cvData.personalData.address != null)
+          _buildInfoRow('Adresse', cvData.personalData.address!),
         if (cvData.personalData.email != null)
           _buildInfoRow('E-Mail', cvData.personalData.email!),
         if (cvData.personalData.phone != null)
@@ -75,8 +108,8 @@ class CvGenerator {
           pw.SizedBox(height: 12),
         ],
 
-        // Kenntnisse
-        if (cvData.skills.isNotEmpty) ...[
+        // Kenntnisse (dynamisch sortiert)
+        if (sortedSkills.isNotEmpty) ...[
           pw.Header(
             level: 1,
             child: pw.Text('Kenntnisse',
@@ -84,10 +117,40 @@ class CvGenerator {
                     fontSize: _fontSizeSection,
                     fontWeight: pw.FontWeight.bold)),
           ),
-          ...cvData.skills.map(_buildSkillEntry),
+          ...sortedSkills.map(_buildSkillEntry),
         ],
       ],
     );
+  }
+
+  /// Sortiert Skills: Priorisierte zuerst, Rest alphabetisch.
+  List<Skill> _sortSkills(
+      List<Skill> skills, List<String>? prioritizedSkills) {
+    if (prioritizedSkills == null || prioritizedSkills.isEmpty) {
+      // Alphabetisch sortieren für konsistente Darstellung.
+      final sorted = List<Skill>.from(skills);
+      sorted.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      return sorted;
+    }
+
+    final prioritySet = prioritizedSkills.map((s) => s.toLowerCase()).toSet();
+    final matched = <Skill>[];
+    final rest = <Skill>[];
+
+    for (final skill in skills) {
+      if (prioritySet.contains(skill.name.toLowerCase())) {
+        matched.add(skill);
+      } else {
+        rest.add(skill);
+      }
+    }
+
+    // Innerhalb der Gruppen alphabetisch sortieren.
+    matched.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    rest.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    return [...matched, ...rest];
   }
 
   pw.Widget _buildInfoRow(String label, String value) {
@@ -112,7 +175,7 @@ class CvGenerator {
 
   pw.Widget _buildExperienceEntry(WorkExperience exp) {
     final dateStr =
-        '${_formatDate(exp.startDate)} – ${exp.isCurrent ? 'heute' : _formatDate(exp.endDate!)}';
+        '${_formatDate(exp.startDate)} - ${exp.isCurrent ? 'bis heute' : _formatDate(exp.endDate!)}';
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -144,7 +207,7 @@ class CvGenerator {
 
   pw.Widget _buildEducationEntry(Education edu) {
     final dateStr =
-        '${_formatDate(edu.startDate)} – ${edu.endDate != null ? _formatDate(edu.endDate!) : 'laufend'}';
+        '${_formatDate(edu.startDate)} - ${edu.endDate != null ? _formatDate(edu.endDate!) : 'laufend'}';
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -173,6 +236,13 @@ class CvGenerator {
   }
 
   pw.Widget _buildSkillEntry(Skill skill) {
+    // Balkenbreite relativ zum verfügbaren Platz (0–100).
+    // Auf ganze Zahlen runden für die flex-Verteilung.
+    final percentage =
+        (skill.proficiency.clamp(0.0, 1.0) * 100).round();
+    final filledFlex = percentage;
+    final emptyFlex = 100 - percentage;
+
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 2),
       child: pw.Row(
@@ -189,26 +259,38 @@ class CvGenerator {
                 color: PdfColors.grey300,
                 borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
               ),
+              // Balken prozentual zum verfügbaren Platz.
+              // Gefüllter Teil + leerer Rest.
               child: pw.Row(
                 children: [
-                  pw.Container(
-                    width: (skill.proficiency * 100).clamp(0, 100) *
-                        1.5, // 150 * proficiency
-                    height: 12,
-                    decoration: pw.BoxDecoration(
-                      color: _skillColor(skill.proficiency),
-                      borderRadius:
-                          const pw.BorderRadius.all(pw.Radius.circular(6)),
+                  pw.Expanded(
+                    flex: filledFlex,
+                    child: pw.Container(
+                      decoration: pw.BoxDecoration(
+                        color: _skillColor(skill.proficiency),
+                        borderRadius: const pw.BorderRadius.all(
+                            pw.Radius.circular(6)),
+                      ),
                     ),
+                  ),
+                  pw.Expanded(
+                    flex: emptyFlex,
+                    child: pw.Container(),
                   ),
                 ],
               ),
             ),
           ),
           pw.SizedBox(width: 8),
-          pw.Text('${(skill.proficiency * 100).round()}%',
+          pw.SizedBox(
+            width: 32,
+            child: pw.Text(
+              '$percentage%',
+              textAlign: pw.TextAlign.right,
               style: const pw.TextStyle(
-                  fontSize: _fontSizeDate, color: PdfColors.grey600)),
+                  fontSize: _fontSizeDate, color: PdfColors.grey600),
+            ),
+          ),
         ],
       ),
     );

@@ -72,3 +72,33 @@ Dort steht "Senior Flutter Developer / Client Engineer, AI-Native and Rust-Frien
 
 5. Wäre es klüger, wenn die Zeile "Senior Flutter Developer / Client Engineer,
 AI-Native and Rust-Friendly (m/f/d)" im PDF "/assets/mydata/30_Bliq.pdf" zentriert ist? Generell wirkt das Deckblatt, als wenn die Textzeilen besser über das Blatt verteilt sein können. Wird das dynamisch generiert oder ist das eine fixe Einstellung?
+
+## Bug: Anschreiben
+
+1. Starke Stilistische Utnershciede zwischen Anschreiben und Deckblatt. Bitte anpassen. => Erledigt
+2. Das Anschreiben ist bei jeder Bewerbung gleich. Haben wir eine Möglichkeit es auf jede Stelle anzupassen, es zu individualisieren? => Erledigt
+3. Der Lebenslauf entspricht, nach den Änderungen aus 1., keinerlei Standards für gutes Design von Anschreiben mehr. Siehe "/assets/mydata/31_Bliq.pdf". Die große rote Überschrift ist zu viel. Bitte nochmal genau überarbeiten. => Erledigt
+4. Das Anschreiben wurde, nach 1. insbesondere, augenscheinlich verschlimmbessert und entspricht nicht dem gängigen Design f+r Anschreiben. Siehe "/assets/mydata/31_Bliq.pdf". Zum Beispiel die große rote Überschrift ist out of place, ebenso die Linie darunter. Auch ein Beispiel ist die Nennung meiner Adresse unter der großen Überschrift und das Fehler der Firmenaresse von Bliq. Kurz: Es gibt mehrere Formfehler von denen nur ein paar genannt wurden. Welche müssen noch verbessert werden?
+
+## Bug Anschreiben, die 2.
+Siehe "/assets/mydata/31_Bliq.pdf".
+
+- Die Kopfzeile schaut nicht aus, wie auf dem Deckblatt => Anpassen
+- Datum oben rechts in der ersten Zeile ist in Ordnung.
+- In der Zeile "Bewerbung als Senior Flutter Developer / Client Engineer, AI-Native and Rust-Friendly (m/f/d)" fehlt das Wort "Betreff"
+- Zwischen Datum und dem Betreff fehlt die Adresse von der Firma => Einbauen, ggf. Scraper nutzen, falls die Firmenadresse nicht offensichbtlich ist.
+- Unter dem Betreff folgende redundante Daten, wie nochmals meine Adresse, ein erneutes Datum und noch ein Betreff => entfernen.
+- Am Ende des Anschreibens steht nochmal "Mit freundlichen Grüßen\nMatthias Struck" => Entfernen
+- Das Anschreiben hat seltsame Leerzielen => Korrgieren
+- Anschreiben nicht änder, als eine Seite.
+- Anschreiben soll dynamisch, ggf. sogar ki-unterstützt anhand der Bewerbung aufgebaut werden => wie?
+
+## Bug Lebenslauf
+Siehe "/assets/mydata/31_Bliq.pdf".
+
+- die Datumsangaben, z.B. "07/2025 heute" bei "Freier Mitarbeiter (Honorarbasis), Redaktion Shadowrun" unter dem Punkt "Berufserfahrung" haben Zeichenfehler. => Korrgieren
+- Das Gesamtdesign des Lebenslaufes, etwa bei den Fußzeilen, hebt sich von dem des Deckblatts und des Anschreibens ab. => Überprüfen und ggf. anpassen.
+- Sind die "Persönlichen Daten" vollständig? Genügt es, wenn die so kurz sind?
+- Die Prozentzahlen der Balkengrafiken unter "Kenntnisse" stimmen nicht mit den Balken überein. Etwa steht bei Dart "95%", aber der Balken ist nur halb voll. Können wir da eine andere Darstellung finden?
+- Die Liste der Kenntnisse im Vergleich zur Vorlage ist ein wenig kurz. Soll das so? 
+- Können wir die Liste der Kenntnisse so umstrukturieren, dass sie dynmaisch anhand der in der Stellenbeschreibung geforderten sortiert sind? Was für Optionen haben wir da?

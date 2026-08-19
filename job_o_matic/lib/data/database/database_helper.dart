@@ -56,7 +56,7 @@ class DatabaseHelper {
 
     return openDatabase(
       path,
-      version: 2,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -69,16 +69,18 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE TABLE applications (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        job_title     TEXT    NOT NULL DEFAULT 'Unbekannte Stelle',
-        company       TEXT    NOT NULL DEFAULT 'Unbekanntes Unternehmen',
-        job_url       TEXT    NOT NULL,
-        status        TEXT    NOT NULL DEFAULT 'queued'
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_title        TEXT    NOT NULL DEFAULT 'Unbekannte Stelle',
+        company          TEXT    NOT NULL DEFAULT 'Unbekanntes Unternehmen',
+        company_address  TEXT,
+        job_url          TEXT    NOT NULL,
+        job_description  TEXT,
+        status           TEXT    NOT NULL DEFAULT 'queued'
                         CHECK(status IN ('queued','processing','completed','failed','exported')),
-        pdf_path      TEXT,
-        error_message TEXT,
-        created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-        completed_at  TEXT
+        pdf_path         TEXT,
+        error_message    TEXT,
+        created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+        completed_at     TEXT
       )
     ''');
 
@@ -177,6 +179,18 @@ class DatabaseHelper {
       ''');
       await db.execute('''
         CREATE INDEX IF NOT EXISTS idx_mail_queue_next_try ON mail_queue(next_try_at)
+      ''');
+    }
+    if (oldVersion < 3) {
+      _log.info('Migration auf Version 3: job_description-Spalte hinzufügen');
+      await db.execute('''
+        ALTER TABLE applications ADD COLUMN job_description TEXT
+      ''');
+    }
+    if (oldVersion < 4) {
+      _log.info('Migration auf Version 4: company_address-Spalte hinzufügen');
+      await db.execute('''
+        ALTER TABLE applications ADD COLUMN company_address TEXT
       ''');
     }
   }

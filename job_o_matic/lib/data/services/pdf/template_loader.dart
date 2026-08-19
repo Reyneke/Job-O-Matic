@@ -23,8 +23,10 @@ Sehr geehrte Damen und Herren,
 mit großem Interesse habe ich Ihre Stellenausschreibung für die Position
 als {{jobTitle}} bei der {{company}} gelesen.
 
-Ich verfüge über {{experience_years}} Berufserfahrung und bringe fundierte
-Kenntnisse in folgenden Bereichen mit: {{skills}}.
+{{job_description_excerpt}}
+
+ Ich verfüge über {{experience_years}} Berufserfahrung und bringe fundierte
+ Kenntnisse in folgenden Bereichen mit: {{relevant_skills}}.
 
 Ich freue mich auf die Möglichkeit, mich in einem persönlichen Gespräch
 vorstellen zu dürfen.

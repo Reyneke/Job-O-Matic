@@ -27,7 +27,9 @@ class Application {
   final int id;
   final String jobTitle;
   final String company;
+  final String? companyAddress;
   final String jobUrl;
+  final String? jobDescription;
   final ApplicationStatus status;
   final String? pdfPath;
   final String? errorMessage;
@@ -39,6 +41,8 @@ class Application {
     required this.jobTitle,
     required this.company,
     required this.jobUrl,
+    this.companyAddress,
+    this.jobDescription,
     this.status = ApplicationStatus.queued,
     this.pdfPath,
     this.errorMessage,
@@ -50,7 +54,9 @@ class Application {
     int? id,
     String? jobTitle,
     String? company,
+    String? companyAddress,
     String? jobUrl,
+    String? jobDescription,
     ApplicationStatus? status,
     String? pdfPath,
     String? errorMessage,
@@ -61,7 +67,9 @@ class Application {
       id: id ?? this.id,
       jobTitle: jobTitle ?? this.jobTitle,
       company: company ?? this.company,
+      companyAddress: companyAddress ?? this.companyAddress,
       jobUrl: jobUrl ?? this.jobUrl,
+      jobDescription: jobDescription ?? this.jobDescription,
       status: status ?? this.status,
       pdfPath: pdfPath ?? this.pdfPath,
       errorMessage: errorMessage ?? this.errorMessage,
@@ -74,7 +82,9 @@ class Application {
         'id': id,
         'jobTitle': jobTitle,
         'company': company,
+        'companyAddress': companyAddress,
         'jobUrl': jobUrl,
+        'jobDescription': jobDescription,
         'status': status.name,
         'pdfPath': pdfPath,
         'errorMessage': errorMessage,
@@ -86,7 +96,9 @@ class Application {
         id: json['id'] as int,
         jobTitle: json['jobTitle'] as String,
         company: json['company'] as String,
+        companyAddress: json['companyAddress'] as String?,
         jobUrl: json['jobUrl'] as String,
+        jobDescription: json['jobDescription'] as String?,
         status: ApplicationStatus.values.firstWhere(
           (e) => e.name == json['status'],
           orElse: () => ApplicationStatus.queued,

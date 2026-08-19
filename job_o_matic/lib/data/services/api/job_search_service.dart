@@ -40,7 +40,7 @@ class JobSearchService {
 
     // Cache prüfen
     if (_cacheService != null) {
-      final cached = _cacheService!.get(cacheKey);
+      final cached = _cacheService.get(cacheKey);
       if (cached != null) {
         _log.info('Gecachte Ergebnisse verwendet: ${cached.length} Jobs');
         return JobSearchResult(jobs: cached);
@@ -78,7 +78,7 @@ class JobSearchService {
     // 2. Adzuna (sekundär) – falls BA wenig oder keine Ergebnisse liefert
     if (_adzunaService != null && allResults.length < 10) {
       try {
-        final adzunaResults = await _adzunaService!.search(
+        final adzunaResults = await _adzunaService.search(
           query: query,
           location: location,
           radius: radius,
@@ -95,9 +95,7 @@ class JobSearchService {
             '${e.statusCode != null ? ' (HTTP ${e.statusCode})' : ''}';
         _log.warning(adzunaError);
         // Adzuna-Fehler nur melden, wenn BA auch fehlgeschlagen ist
-        if (errorMessage == null) {
-          errorMessage = adzunaError;
-        }
+        errorMessage ??= adzunaError;
       } catch (e) {
         _log.warning('Adzuna-API fehlgeschlagen: $e');
       }
@@ -108,7 +106,7 @@ class JobSearchService {
 
     // 4. Im Cache speichern
     if (_cacheService != null && filtered.isNotEmpty) {
-      _cacheService!.set(cacheKey, filtered);
+      _cacheService.set(cacheKey, filtered);
     }
 
     _log.info(

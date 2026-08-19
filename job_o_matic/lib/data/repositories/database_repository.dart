@@ -222,7 +222,9 @@ class DatabaseRepository {
     final row = <String, dynamic>{
       'job_title': app.jobTitle,
       'company': app.company,
+      'company_address': app.companyAddress,
       'job_url': app.jobUrl,
+      'job_description': app.jobDescription,
       'status': app.status.name,
       'pdf_path': app.pdfPath,
       'error_message': app.errorMessage,
@@ -243,7 +245,9 @@ class DatabaseRepository {
         id: row['id'] as int,
         jobTitle: row['job_title'] as String,
         company: row['company'] as String,
+        companyAddress: row['company_address'] as String?,
         jobUrl: row['job_url'] as String,
+        jobDescription: row['job_description'] as String?,
         status: ApplicationStatus.values.firstWhere(
           (e) => e.name == row['status'],
           orElse: () => ApplicationStatus.queued,

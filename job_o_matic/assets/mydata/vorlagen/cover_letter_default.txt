@@ -1,22 +1,12 @@
-{{firstName}} {{lastName}}
-{{address}}
-{{email}}
-{{phone}}
-
-{{company}}
-{{jobTitle}}
-
-{{date}}
-
-Betreff: Bewerbung als {{jobTitle}}
-
 Sehr geehrte Damen und Herren,
 
 mit großem Interesse habe ich Ihre Stellenausschreibung für die Position
 als {{jobTitle}} bei der {{company}} gelesen.
 
+{{job_description_excerpt}}
+
 Ich verfüge über {{experience_years}} Berufserfahrung und bringe fundierte
-Kenntnisse in folgenden Bereichen mit: {{skills}}.
+Kenntnisse in folgenden Bereichen mit: {{relevant_skills}}.
 
 In meiner bisherigen Tätigkeit konnte ich umfangreiche Erfahrungen in der
 Entwicklung und Umsetzung komplexer Softwareprojekte sammeln. Besonders
@@ -30,7 +20,3 @@ auch anspruchsvolle Projekte erfolgreich umzusetzen.
 Ich freue mich auf die Möglichkeit, mich in einem persönlichen Gespräch
 vorstellen zu dürfen, und stehe Ihnen für Rückfragen jederzeit gerne zur
 Verfügung.
-
-Mit freundlichen Grüßen
-
-{{firstName}} {{lastName}}
