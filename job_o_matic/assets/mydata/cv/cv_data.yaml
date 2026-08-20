@@ -135,7 +135,26 @@ education:
     end_date: "2024-05-31"
     field: "Agile Methoden"
 
+certificates:
+  - name: "Moderne Anwendungsentwicklung"
+    issuer: "appAkademie"
+    date: "2026-06-26"
+    certificate_id: "26-07-04"
+  - name: "Professional Scrum Master I"
+    issuer: "Skilldrops Akademie"
+    date: "2024-02-28"
+  - name: "Professional Scrum Developer I"
+    issuer: "Skilldrops Akademie"
+    date: "2024-03-31"
+  - name: "Professional Scrum Product Owner I"
+    issuer: "Skilldrops Akademie"
+    date: "2024-04-30"
+  - name: "Professional Agile Leader I"
+    issuer: "Skilldrops Akademie"
+    date: "2024-05-31"
+
 skills:
+  # Programmiersprachen
   - name: "Dart"
     proficiency: 0.95
   - name: "Flutter"
@@ -152,8 +171,68 @@ skills:
     proficiency: 0.70
   - name: "Assembler (x86, z80)"
     proficiency: 0.80
-  - name: "SQL / Datenbanken"
+  - name: "Delphi / FPC"
     proficiency: 0.75
+  - name: "GML / Game Maker"
+    proficiency: 0.70
+  - name: "Bash Script"
+    proficiency: 0.70
+  - name: "Lua"
+    proficiency: 0.60
+
+  # Frameworks & Tools
+  - name: "Arduino"
+    proficiency: 0.80
+  - name: "Qt"
+    proficiency: 0.70
+  - name: "Sikuli / Selenium"
+    proficiency: 0.70
+  - name: "MQTT"
+    proficiency: 0.60
+
+  # Plattformen & Betriebssysteme
+  - name: "ARM"
+    proficiency: 0.80
+  - name: "Atmel / ATMEGA"
+    proficiency: 0.80
+  - name: "x86 / x64"
+    proficiency: 0.80
+  - name: "z80"
+    proficiency: 0.75
+  - name: "Unix / Linux (Debian)"
+    proficiency: 0.80
+  - name: "Microsoft Windows"
+    proficiency: 0.85
+  - name: "Bare-Metal"
+    proficiency: 0.75
+
+  # Netzwerk & Protokolle
+  - name: "TCP/IP, UDP, RAW"
+    proficiency: 0.80
+  - name: "CAN, Flexray, LIN, EtherCAT"
+    proficiency: 0.75
+  - name: "IBIS, IBIS IP"
+    proficiency: 0.60
+  - name: "ZVT, iSelf, APCP"
+    proficiency: 0.60
+
+  # Datenbanken
+  - name: "SQL / MySQL"
+    proficiency: 0.75
+  - name: "Oracle"
+    proficiency: 0.60
+
+  # Entwicklungsumgebungen
+  - name: "Eclipse"
+    proficiency: 0.70
+  - name: "Android Studio"
+    proficiency: 0.70
+  - name: "Qt Creator"
+    proficiency: 0.70
+  - name: "vim"
+    proficiency: 0.75
+
+  # Projektmanagement
   - name: "Scrum / Agile"
     proficiency: 0.85
   - name: "Git / GitHub"

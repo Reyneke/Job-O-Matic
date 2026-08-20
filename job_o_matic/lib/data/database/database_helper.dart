@@ -56,7 +56,7 @@ class DatabaseHelper {
 
     return openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -117,6 +117,7 @@ class DatabaseHelper {
         personal_data_json  TEXT    NOT NULL,
         work_experience_json TEXT   NOT NULL DEFAULT '[]',
         education_json      TEXT    NOT NULL DEFAULT '[]',
+        certificates_json   TEXT    NOT NULL DEFAULT '[]',
         skills_json         TEXT    NOT NULL DEFAULT '[]',
         loaded_at           TEXT    NOT NULL DEFAULT (datetime('now'))
       )
@@ -191,6 +192,12 @@ class DatabaseHelper {
       _log.info('Migration auf Version 4: company_address-Spalte hinzufügen');
       await db.execute('''
         ALTER TABLE applications ADD COLUMN company_address TEXT
+      ''');
+    }
+    if (oldVersion < 5) {
+      _log.info('Migration auf Version 5: certificates_json-Spalte hinzufügen');
+      await db.execute('''
+        ALTER TABLE cv_data ADD COLUMN certificates_json TEXT NOT NULL DEFAULT '[]'
       ''');
     }
   }

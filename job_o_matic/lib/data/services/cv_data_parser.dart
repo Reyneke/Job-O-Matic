@@ -223,6 +223,47 @@ class CvDataParser {
         }
       }
 
+      // ── Certificates parsen ─────────────────────────────────────
+      final certificates = <Certificate>[];
+      if (data['certificates'] is List) {
+        for (int i = 0; i < (data['certificates'] as List).length; i++) {
+          final cert = (data['certificates'] as List)[i] as Map?;
+          if (cert == null) continue;
+
+          final name = _stringField(cert, 'name');
+          final issuer = _stringField(cert, 'issuer');
+          final date = _dateField(cert, 'date');
+
+          if (name == null) {
+            errors.add(CvValidationError(
+              field: 'certificates[$i].name',
+              message: 'Zertifikatsname ist erforderlich.',
+            ));
+          }
+          if (issuer == null) {
+            errors.add(CvValidationError(
+              field: 'certificates[$i].issuer',
+              message: 'Aussteller ist erforderlich.',
+            ));
+          }
+          if (date == null) {
+            errors.add(CvValidationError(
+              field: 'certificates[$i].date',
+              message: 'Datum ist erforderlich (Format: YYYY-MM-DD).',
+            ));
+          }
+
+          if (name != null && issuer != null && date != null) {
+            certificates.add(Certificate(
+              name: name,
+              issuer: issuer,
+              date: date,
+              certificateId: _stringField(cert, 'certificate_id'),
+            ));
+          }
+        }
+      }
+
       // ── Skills parsen ───────────────────────────────────────────
       final skills = <Skill>[];
       if (data['skills'] is List) {
@@ -271,6 +312,7 @@ class CvDataParser {
                   personalData: personalData,
                   workExperience: workExperience,
                   education: education,
+                  certificates: certificates,
                   skills: skills,
                 )
               : null,
@@ -283,6 +325,7 @@ class CvDataParser {
         personalData: personalData,
         workExperience: workExperience,
         education: education,
+        certificates: certificates,
         skills: skills,
       );
 
@@ -290,6 +333,7 @@ class CvDataParser {
         'CV-Daten erfolgreich geladen: ${personalData.fullName}, '
         '${workExperience.length} Berufserfahrungen, '
         '${education.length} Ausbildungen, '
+        '${certificates.length} Zertifikate, '
         '${skills.length} Skills',
       );
 

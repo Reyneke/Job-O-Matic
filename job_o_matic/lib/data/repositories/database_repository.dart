@@ -266,6 +266,8 @@ class DatabaseRepository {
             jsonEncode(cvData.workExperience.map((e) => e.toJson()).toList()),
         'education_json':
             jsonEncode(cvData.education.map((e) => e.toJson()).toList()),
+        'certificates_json':
+            jsonEncode(cvData.certificates.map((e) => e.toJson()).toList()),
         'skills_json':
             jsonEncode(cvData.skills.map((e) => e.toJson()).toList()),
         'loaded_at': DateTime.now().toIso8601String(),
@@ -283,6 +285,11 @@ class DatabaseRepository {
       education: (jsonDecode(row['education_json'] as String) as List<dynamic>)
           .map((e) => Education.fromJson(e as Map<String, dynamic>))
           .toList(),
+      certificates: row['certificates_json'] != null
+          ? (jsonDecode(row['certificates_json'] as String) as List<dynamic>)
+              .map((e) => Certificate.fromJson(e as Map<String, dynamic>))
+              .toList()
+          : [],
       skills: (jsonDecode(row['skills_json'] as String) as List<dynamic>)
           .map((e) => Skill.fromJson(e as Map<String, dynamic>))
           .toList(),

@@ -110,6 +110,35 @@ class Education {
       );
 }
 
+/// Ein Zertifikat / eine berufliche Qualifikation.
+class Certificate {
+  final String name;
+  final String issuer;
+  final DateTime date;
+  final String? certificateId;
+
+  const Certificate({
+    required this.name,
+    required this.issuer,
+    required this.date,
+    this.certificateId,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'issuer': issuer,
+        'date': date.toIso8601String(),
+        'certificateId': certificateId,
+      };
+
+  factory Certificate.fromJson(Map<String, dynamic> json) => Certificate(
+        name: json['name'] as String,
+        issuer: json['issuer'] as String,
+        date: DateTime.parse(json['date'] as String),
+        certificateId: json['certificateId'] as String?,
+      );
+}
+
 /// A skill with proficiency level.
 class Skill {
   final String name;
@@ -136,12 +165,14 @@ class CvData {
   final PersonalData personalData;
   final List<WorkExperience> workExperience;
   final List<Education> education;
+  final List<Certificate> certificates;
   final List<Skill> skills;
 
   const CvData({
     required this.personalData,
     this.workExperience = const [],
     this.education = const [],
+    this.certificates = const [],
     this.skills = const [],
   });
 
@@ -149,6 +180,7 @@ class CvData {
         'personalData': personalData.toJson(),
         'workExperience': workExperience.map((e) => e.toJson()).toList(),
         'education': education.map((e) => e.toJson()).toList(),
+        'certificates': certificates.map((e) => e.toJson()).toList(),
         'skills': skills.map((e) => e.toJson()).toList(),
       };
 
@@ -163,6 +195,11 @@ class CvData {
         education: (json['education'] as List<dynamic>?)
                 ?.map(
                     (e) => Education.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [],
+        certificates: (json['certificates'] as List<dynamic>?)
+                ?.map(
+                    (e) => Certificate.fromJson(e as Map<String, dynamic>))
                 .toList() ??
             [],
         skills: (json['skills'] as List<dynamic>?)

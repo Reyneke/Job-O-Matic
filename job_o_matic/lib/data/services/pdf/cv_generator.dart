@@ -108,6 +108,19 @@ class CvGenerator {
           pw.SizedBox(height: 12),
         ],
 
+        // Zertifikate
+        if (cvData.certificates.isNotEmpty) ...[
+          pw.Header(
+            level: 1,
+            child: pw.Text('Zertifikate',
+                style: pw.TextStyle(
+                    fontSize: _fontSizeSection,
+                    fontWeight: pw.FontWeight.bold)),
+          ),
+          ...cvData.certificates.map(_buildCertificateEntry),
+          pw.SizedBox(height: 12),
+        ],
+
         // Kenntnisse (dynamisch sortiert)
         if (sortedSkills.isNotEmpty) ...[
           pw.Header(
@@ -231,6 +244,33 @@ class CvGenerator {
           pw.Text(edu.field!,
               style: const pw.TextStyle(
                   fontSize: _fontSizeValue, color: PdfColors.grey600)),
+      ],
+    );
+  }
+
+  pw.Widget _buildCertificateEntry(Certificate cert) {
+    final dateStr = DateFormat('MM/yyyy').format(cert.date);
+    final idStr = cert.certificateId != null ? ' (${cert.certificateId})' : '';
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.SizedBox(height: 6),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(cert.name,
+                style: const pw.TextStyle(
+                    fontSize: _fontSizePosition,
+                    fontWeight: pw.FontWeight.bold)),
+            pw.Text(dateStr,
+                style: const pw.TextStyle(
+                    fontSize: _fontSizeDate, color: PdfColors.grey600)),
+          ],
+        ),
+        pw.Text('${cert.issuer}$idStr',
+            style: const pw.TextStyle(
+                fontSize: _fontSizeCompany, color: PdfColors.grey700)),
       ],
     );
   }

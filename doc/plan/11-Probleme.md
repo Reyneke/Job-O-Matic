@@ -102,3 +102,13 @@ Siehe "/assets/mydata/31_Bliq.pdf".
 - Die Prozentzahlen der Balkengrafiken unter "Kenntnisse" stimmen nicht mit den Balken überein. Etwa steht bei Dart "95%", aber der Balken ist nur halb voll. Können wir da eine andere Darstellung finden?
 - Die Liste der Kenntnisse im Vergleich zur Vorlage ist ein wenig kurz. Soll das so? 
 - Können wir die Liste der Kenntnisse so umstrukturieren, dass sie dynmaisch anhand der in der Stellenbeschreibung geforderten sortiert sind? Was für Optionen haben wir da?
+
+## Bug Lebenslauf YAML
+Quelle: "assets/myassets/cv"
+
+- Die Lebenslauf YAML scheint im bereich "Berfuliche Kenntnisse und Fertigkeiten" deutlich zu kurz zu sein. Vergleiche ich was darin steht, mit der Vorlage. Bitte den Inhalt der YAML überprüfen und ggf. updaten.
+
+## Bug Lebenslauf Zertifikate
+Quelle: "assets/myassets/cv"
+
+- Es scheinen beim Lebenslauf die beruflichen Zertikate zu fehlen, welche im original PDF Ordner liegen. Wurden diese bereits angefügt und, passend, eingepflegt?
