@@ -112,3 +112,4 @@ Quelle: "assets/myassets/cv"
 Quelle: "assets/myassets/cv"
 
 - Es scheinen beim Lebenslauf die beruflichen Zertikate zu fehlen, welche im original PDF Ordner liegen. Wurden diese bereits angefügt und, passend, eingepflegt?
+

@@ -1,4 +1,4 @@
-Sehr geehrte Damen und Herren,
+{{salutation}}
 
 mit großem Interesse habe ich Ihre Stellenausschreibung für die Position
 als {{jobTitle}} bei der {{company}} gelesen.

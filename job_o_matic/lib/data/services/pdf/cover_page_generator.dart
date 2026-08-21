@@ -14,22 +14,8 @@ class CoverPageGenerator {
     return pw.MultiPage(
       pageFormat: PdfUtils.pageFormat,
       margin: const pw.EdgeInsets.all(48),
-      // Fußzeile mit dezenter Seitenzahl (Option A).
-      footer: (context) {
-        String footerText;
-        try {
-          footerText = 'Seite ${context.pageNumber} von ${context.pagesCount}';
-        } catch (_) {
-          footerText = '';
-        }
-        return pw.Align(
-          alignment: pw.Alignment.center,
-          child: pw.Text(
-            footerText,
-            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
-          ),
-        );
-      },
+      // Fußzeile mit dezenter Seitenzahl (nicht auf Seite 1).
+      footer: PdfUtils.buildFooter,
       build: (context) => [
         // Absender (oben links)
         pw.Header(
@@ -91,8 +77,9 @@ class CoverPageGenerator {
         ),
         pw.SizedBox(height: 24),
 
-        // Datum
-        pw.Center(
+        // Datum (DIN 5008: rechtsbündig)
+        pw.Align(
+          alignment: pw.Alignment.centerRight,
           child: pw.Text(
             'Datum: ${jobInfo['date']}',
             style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey600),

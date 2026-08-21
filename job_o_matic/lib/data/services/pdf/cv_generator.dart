@@ -1,6 +1,5 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:intl/intl.dart';
 import 'pdf_utils.dart';
 import '../../../models/cv_data.dart';
 
@@ -34,22 +33,8 @@ class CvGenerator {
     return pw.MultiPage(
       pageFormat: PdfUtils.pageFormat,
       margin: const pw.EdgeInsets.all(48),
-      // Fußzeile: Identisch zu Deckblatt und Anschreiben.
-      footer: (context) {
-        String footerText;
-        try {
-          footerText = 'Seite ${context.pageNumber} von ${context.pagesCount}';
-        } catch (_) {
-          footerText = '';
-        }
-        return pw.Align(
-          alignment: pw.Alignment.center,
-          child: pw.Text(
-            footerText,
-            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
-          ),
-        );
-      },
+      // Fußzeile: Identisch zu Deckblatt und Anschreiben (nicht auf Seite 1).
+      footer: PdfUtils.buildFooter,
       build: (context) => [
         // Überschrift
         pw.Header(
@@ -188,7 +173,7 @@ class CvGenerator {
 
   pw.Widget _buildExperienceEntry(WorkExperience exp) {
     final dateStr =
-        '${_formatDate(exp.startDate)} - ${exp.isCurrent ? 'bis heute' : _formatDate(exp.endDate!)}';
+        '${_formatDate(exp.startDate)} - ${exp.isCurrent ? 'heute' : _formatDate(exp.endDate!)}';
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -249,7 +234,7 @@ class CvGenerator {
   }
 
   pw.Widget _buildCertificateEntry(Certificate cert) {
-    final dateStr = DateFormat('MM/yyyy').format(cert.date);
+    final dateStr = PdfUtils.dateFormatMonthYear.format(cert.date);
     final idStr = cert.certificateId != null ? ' (${cert.certificateId})' : '';
 
     return pw.Column(
@@ -343,6 +328,6 @@ class CvGenerator {
   }
 
   String _formatDate(DateTime date) {
-    return DateFormat('MM/yyyy').format(date);
+    return PdfUtils.dateFormatMonthYear.format(date);
   }
 }

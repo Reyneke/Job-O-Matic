@@ -1,4 +1,3 @@
-import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'pdf_utils.dart';
@@ -44,31 +43,17 @@ class CoverLetterGenerator {
       margin: const pw.EdgeInsets.all(48),
       // Garantiert maximal eine Seite.
       maxPages: 1,
-      // Fußzeile: "Seite X von Y" (zentriert, dezent)
-      footer: (context) {
-        String footerText;
-        try {
-          footerText = 'Seite ${context.pageNumber} von ${context.pagesCount}';
-        } catch (_) {
-          footerText = '';
-        }
-        return pw.Align(
-          alignment: pw.Alignment.center,
-          child: pw.Text(
-            footerText,
-            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
-          ),
-        );
-      },
+      // Fußzeile: "Seite X von Y" (zentriert, dezent, nicht auf Seite 1)
+      footer: PdfUtils.buildFooter,
       build: (context) => [
         // --- ABSENDER (oben links, gleiche Kopfzeile wie Deckblatt) ---
+        // DIN 5008: Nur Name + Adresse in der Absenderzeile.
+        // E-Mail/Telefon gehören in den Briefkopf.
         pw.Header(
           level: 0,
           child: pw.Text(
             '${personalData.fullName}\n'
-            '${personalData.address ?? ''}\n'
-            '${personalData.email ?? ''}\n'
-            '${personalData.phone ?? ''}',
+            '${personalData.address ?? ''}',
             style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
           ),
         ),
@@ -100,9 +85,9 @@ class CoverLetterGenerator {
                 ],
               ),
             ),
-            // Datum rechts
+            // Datum rechts (DIN 5008: numerisch TT.MM.JJJJ)
             pw.Text(
-              DateFormat('dd. MMMM yyyy', 'de_DE').format(DateTime.now()),
+              PdfUtils.dateFormatFull.format(DateTime.now()),
               style: pw.TextStyle(fontSize: 10, color: PdfColors.grey500),
             ),
           ],

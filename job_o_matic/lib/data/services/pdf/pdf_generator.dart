@@ -3,12 +3,12 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:logging/logging.dart';
-import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'template_loader.dart';
 import 'cover_page_generator.dart';
 import 'cover_letter_generator.dart';
 import 'cv_generator.dart';
+import 'pdf_utils.dart';
 import '../../../models/application.dart';
 import '../../../models/cv_data.dart';
 
@@ -53,7 +53,7 @@ class PdfGenerator {
         jobInfo: {
           'jobTitle': application.jobTitle,
           'company': application.company,
-          'date': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+          'date': PdfUtils.dateFormatFull.format(DateTime.now()),
         },
         logoBytes: logoBytes,
       );
@@ -74,7 +74,7 @@ class PdfGenerator {
         'phone': cvData.personalData.phone ?? '',
         'jobTitle': application.jobTitle,
         'company': application.company,
-        'date': DateFormat('dd.MM.yyyy').format(DateTime.now()),
+        'date': PdfUtils.dateFormatFull.format(DateTime.now()),
         'skills': cvData.skills.map((s) => s.name).join(', '),
         'relevant_skills': _extractRelevantSkills(
             application.jobDescription, cvData.skills),
@@ -83,6 +83,8 @@ class PdfGenerator {
         'job_description': application.jobDescription ?? '',
         'job_description_excerpt': _extractDescriptionExcerpt(
             application.jobDescription),
+        // Persönliche Anrede (DIN 5008)
+        'salutation': _buildSalutation(cvData.personalData),
       });
       final letterPage = _coverLetterGenerator.build(
         personalData: cvData.personalData,
@@ -134,6 +136,17 @@ class PdfGenerator {
 
     _log.info('PDF gespeichert: $filePath ($pageCount Seiten)');
     return filePath;
+  }
+
+  /// Baut die persönliche Anrede für das Anschreiben.
+  ///
+  /// Leitet die Anrede aus den CV-Daten ab, wo möglich.
+  /// Fallback: Generische Anrede "Sehr geehrte Damen und Herren,".
+  String _buildSalutation(PersonalData personalData) {
+    // Da kein Geschlecht in den Daten vorhanden ist, verwenden wir
+    // die generische Anrede. Bei zukünftiger Erweiterung der Daten
+    // (z.B. Geschlecht) kann hier die persönliche Anrede abgeleitet werden.
+    return 'Sehr geehrte Damen und Herren,';
   }
 
   /// Extrahiert die für die Stelle relevanten Skills aus der CV-Skill-Liste.
