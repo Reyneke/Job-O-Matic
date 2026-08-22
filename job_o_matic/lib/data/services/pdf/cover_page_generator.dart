@@ -12,8 +12,8 @@ class CoverPageGenerator {
     Uint8List? logoBytes,
   }) {
     return pw.MultiPage(
+      // DIN-5008-Ränder kommen aus PdfUtils.pageFormat.
       pageFormat: PdfUtils.pageFormat,
-      margin: const pw.EdgeInsets.all(48),
       // Fußzeile mit dezenter Seitenzahl (nicht auf Seite 1).
       footer: PdfUtils.buildFooter,
       build: (context) => [

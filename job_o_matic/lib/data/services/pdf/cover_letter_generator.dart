@@ -39,8 +39,8 @@ class CoverLetterGenerator {
     final fontSize = trimmedText.length > 1200 ? _minFontSize : 10.0;
 
     return pw.MultiPage(
+      // DIN-5008-Ränder kommen aus PdfUtils.pageFormat.
       pageFormat: PdfUtils.pageFormat,
-      margin: const pw.EdgeInsets.all(48),
       // Garantiert maximal eine Seite.
       maxPages: 1,
       // Fußzeile: "Seite X von Y" (zentriert, dezent, nicht auf Seite 1)
@@ -106,6 +106,7 @@ class CoverLetterGenerator {
         pw.SizedBox(height: 16),
 
         // --- FLIESS-TEXT (aus Template, nur Inhalt) ---
+        // DIN 5008: Blocksatz für Fließtext.
         pw.Paragraph(
           text: trimmedText,
           style: pw.TextStyle(
@@ -113,12 +114,14 @@ class CoverLetterGenerator {
             lineSpacing: 1.3,
             color: PdfColors.grey900,
           ),
+          textAlign: pw.TextAlign.justify,
         ),
         pw.SizedBox(height: 20),
 
         // --- GRUßFORMEL (einzige, vom Generator gerendert) ---
+        // DIN 5008: Grußformel linksbündig.
         pw.Align(
-          alignment: pw.Alignment.centerRight,
+          alignment: pw.Alignment.centerLeft,
           child: pw.Text(
             'Mit freundlichen Grüßen\n${personalData.fullName}',
             style: pw.TextStyle(fontSize: 10),

@@ -1,22 +1,9 @@
 {{salutation}}
 
-mit großem Interesse habe ich Ihre Stellenausschreibung für die Position
-als {{jobTitle}} bei der {{company}} gelesen.
+mit großem Interesse habe ich Ihre Stellenausschreibung für die Position als {{jobTitle}} bei der {{company}} gelesen. {{job_description_excerpt}}
 
-{{job_description_excerpt}}
+Ich verfüge über {{experience_years}} Berufserfahrung und bringe fundierte Kenntnisse in folgenden Bereichen mit: {{relevant_skills}}. In meiner bisherigen Tätigkeit konnte ich umfangreiche Erfahrungen in der Entwicklung und Umsetzung komplexer Softwareprojekte sammeln.
 
-Ich verfüge über {{experience_years}} Berufserfahrung und bringe fundierte
-Kenntnisse in folgenden Bereichen mit: {{relevant_skills}}.
+Ich bin zuverlässig, teamfähig und arbeite mich schnell in neue Themengebiete ein. Mein strukturiertes und lösungsorientiertes Arbeiten befähigt mich, auch anspruchsvolle Projekte erfolgreich umzusetzen.
 
-In meiner bisherigen Tätigkeit konnte ich umfangreiche Erfahrungen in der
-Entwicklung und Umsetzung komplexer Softwareprojekte sammeln. Besonders
-reizen mich die Herausforderungen und die Möglichkeit, meine Fähigkeiten
-in Ihrem Unternehmen gewinnbringend einzusetzen.
-
-Ich bin zuverlässig, teamfähig und arbeite mich schnell in neue Themengebiete
-ein. Mein strukturiertes und lösungsorientiertes Arbeiten befähigt mich,
-auch anspruchsvolle Projekte erfolgreich umzusetzen.
-
-Ich freue mich auf die Möglichkeit, mich in einem persönlichen Gespräch
-vorstellen zu dürfen, und stehe Ihnen für Rückfragen jederzeit gerne zur
-Verfügung.
+Ich freue mich auf die Möglichkeit, mich in einem persönlichen Gespräch vorstellen zu dürfen, und stehe Ihnen für Rückfragen jederzeit gerne zur Verfügung.

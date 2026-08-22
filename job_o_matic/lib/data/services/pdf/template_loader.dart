@@ -6,34 +6,15 @@ import 'package:logging/logging.dart';
 /// Fallback auf eine eingebettete Default-Vorlage, falls die Datei nicht existiert.
 /// Standard-Anschreiben-Vorlage (Fallback, falls keine Datei gefunden wird).
 const String _defaultCoverLetterTemplate = '''
-{{firstName}} {{lastName}}
-{{address}}
-{{email}}
-{{phone}}
+{{salutation}}
 
-{{company}}
-{{jobTitle}}
+mit großem Interesse habe ich Ihre Stellenausschreibung für die Position als {{jobTitle}} bei der {{company}} gelesen. {{job_description_excerpt}}
 
-{{date}}
+Ich verfüge über {{experience_years}} Berufserfahrung und bringe fundierte Kenntnisse in folgenden Bereichen mit: {{relevant_skills}}. In meiner bisherigen Tätigkeit konnte ich umfangreiche Erfahrungen in der Entwicklung und Umsetzung komplexer Softwareprojekte sammeln.
 
-Betreff: Bewerbung als {{jobTitle}}
+Ich bin zuverlässig, teamfähig und arbeite mich schnell in neue Themengebiete ein. Mein strukturiertes und lösungsorientiertes Arbeiten befähigt mich, auch anspruchsvolle Projekte erfolgreich umzusetzen.
 
-Sehr geehrte Damen und Herren,
-
-mit großem Interesse habe ich Ihre Stellenausschreibung für die Position
-als {{jobTitle}} bei der {{company}} gelesen.
-
-{{job_description_excerpt}}
-
- Ich verfüge über {{experience_years}} Berufserfahrung und bringe fundierte
- Kenntnisse in folgenden Bereichen mit: {{relevant_skills}}.
-
-Ich freue mich auf die Möglichkeit, mich in einem persönlichen Gespräch
-vorstellen zu dürfen.
-
-Mit freundlichen Grüßen
-
-{{firstName}} {{lastName}}
+Ich freue mich auf die Möglichkeit, mich in einem persönlichen Gespräch vorstellen zu dürfen, und stehe Ihnen für Rückfragen jederzeit gerne zur Verfügung.
 ''';
 
 class TemplateLoader {
@@ -75,11 +56,43 @@ class TemplateRenderer {
   /// ```dart
   /// render('Hallo {{name}}', {'name': 'Welt'}) → 'Hallo Welt'
   /// ```
+  ///
+  /// Normalisiert außerdem Zeilenumbrüche:
+  /// - Einfache `\n` werden zu Leerzeichen (Fließtext fließt dynamisch)
+  /// - Leere Zeilen (`\n\n`) bleiben als Absatztrenner erhalten
   String render(String template, Map<String, String> variables) {
     String result = template;
     for (final entry in variables.entries) {
       result = result.replaceAll('{{${entry.key}}}', entry.value);
     }
-    return result;
+    return _normalizeLineBreaks(result);
+  }
+
+  /// Normalisiert Zeilenumbrüche für den Fließtext.
+  ///
+  /// DIN 5008: Der Fließtext soll dynamisch umbrechen (Blocksatz).
+  /// Feste Zeilenumbrüche aus der Vorlage würden das Layout zerstören.
+  ///
+  /// Regeln:
+  /// - Einfache `\n` → Leerzeichen (Zeilen werden zusammengeführt)
+  /// - `\n\n` → Absatzumbruch (bleibt erhalten)
+  /// - Mehrfache Leerzeichen werden zu einem einzelnen reduziert
+  String _normalizeLineBreaks(String text) {
+    // Zeilenumbrüche normalisieren (Windows CRLF → LF)
+    var normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+
+    // Absätze (leere Zeilen) temporär schützen
+    final paragraphs = normalized.split('\n\n');
+
+    // Jeden Absatz: Einfache Zeilenumbrüche → Leerzeichen, trimmen
+    final merged = paragraphs.map((paragraph) {
+      return paragraph
+          .replaceAll('\n', ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }).toList();
+
+    // Absätze wieder mit \n\n verbinden
+    return merged.join('\n\n').trim();
   }
 }

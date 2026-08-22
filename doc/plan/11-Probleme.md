@@ -113,3 +113,77 @@ Quelle: "assets/myassets/cv"
 
 - Es scheinen beim Lebenslauf die beruflichen Zertikate zu fehlen, welche im original PDF Ordner liegen. Wurden diese bereits angefügt und, passend, eingepflegt?
 
+## Bug Anschreiben: Textbreiten
+Siehe "/assets/mydata/31_Bliq.pdf"
+
+- Die Anschreiben im Lebenslauf scheinen stark zu variieren. Woran liegt das und wie könnte man das lösen und weiterhin DIN 5008 konform zu sein?
+
+**Root Cause (gefunden):**
+
+Alle drei Generatoren (`cover_letter_generator.dart`, `cv_generator.dart`, `cover_page_generator.dart`) verwendeten eine explizite `margin: const pw.EdgeInsets.all(48)`-Eigenschaft. Diese **überschrieb** die DIN-5008-Ränder aus `PdfUtils.pageFormat` (links 71pt/25mm, rechts 57pt/20mm, oben/unten 57pt/20mm). Dadurch:
+- Einheitliche Textbreite von 499pt statt der DIN-5008-konformen 467pt
+- Die Textbreiten variierten, weil die explizite `margin`-Eigenschaft die `pageFormat`-Ränder überstimmte
+
+**Fix (implementiert):**
+
+1. **`cover_letter_generator.dart`** – `margin: const pw.EdgeInsets.all(48)` entfernt
+2. **`cv_generator.dart`** – `margin: const pw.EdgeInsets.all(48)` entfernt
+3. **`cover_page_generator.dart`** – `margin: const pw.EdgeInsets.all(48)` entfernt
+
+Alle drei Generatoren verwenden jetzt ausschließlich die DIN-5008-Ränder aus `PdfUtils.pageFormat`. Die Textbreiten sind damit konsistent und DIN-5008-konform.
+
+**Verifikation:**
+- Alle 43 Tests bestanden (inkl. 6 DIN-5008-Tests)
+- Keine weiteren `EdgeInsets.all(48)`-Vorkommen im PDF-Code
+
+- Bitte in Siehe "/assets/mydata/31_Bliq.pdf" reinsehen. Im Anschreiben sind immer noch augenscheinlich drei unterschiedliche Textbreiten versehen? Und stimmt die Textausrichtung? Ausserdem: gehört das "mit freundlichen Grüßen" und mein Name darunter nicht nach links?
+
+**Analyse:**
+
+1. **Drei unterschiedliche Textbreiten**: Das ist teilweise normales DIN-5008-Verhalten – Absender und Empfängerblock sind üblicherweise schmaler als der Fließtext. Die wahrgenommene Inkonsistenz entsteht durch die unterschiedlichen Breiten der Blöcke. (Empfängerblock-Anpassung wurde auf Wunsch des Nutzers zurückgestellt.)
+
+2. **Textausrichtung**: Der Fließtext war linksbündig (Flattersatz). DIN 5008 empfiehlt Blocksatz.
+
+3. **Grußformel**: War rechtsbündig (`centerRight`). DIN 5008 schreibt vor, dass die Grußformel **linksbündig** ist.
+
+**Fix (implementiert):**
+
+**`cover_letter_generator.dart`:**
+- **Fließtext**: `textAlign: pw.TextAlign.justify` hinzugefügt (Blocksatz, DIN-5008-konform)
+- **Grußformel**: `pw.Alignment.centerRight` → `pw.Alignment.centerLeft` (linksbündig, DIN-5008-konform)
+
+**Verifikation:**
+- Alle 43 Tests bestanden
+
+# Bug Vorlage für den Cover Letter
+
+- Die Vorlage "cover_letter_default.txt" ist darauf zu überprüfen, ob sie unseren Anforderungen an ein Anschreiben genügt, inwieweit das aus ihr generierte Eregbnis DIN 5008 konform ist und was wir ver#ndern könnten. Besonders die festen Zeilenabsätze im Textfile sehen aus, als könnten sie alles zerhacken.
+
+**Root Cause (gefunden):**
+
+Die Vorlage `cover_letter_default.txt` enthielt **feste Zeilenumbrüche nach ~72 Zeichen** (z.B. "mit großem Interesse habe ich Ihre Stellenausschreibung für die Position" / "als {{jobTitle}} bei der {{company}} gelesen."). Der `TemplateRenderer` ersetzte nur die Platzhalter, aber die Zeilenumbrüche blieben erhalten. Dadurch:
+- Der Fließtext wurde mit den fixen Zeilenumbrüchen gerendert
+- Das rechte Textende wurde unregelmäßig (Blocksatz wirkungslos)
+- Die Umbrüche basierten auf der Template-Zeilenlänge, nicht auf der tatsächlichen PDF-Spaltenbreite
+
+**Fix (implementiert):**
+
+1. **`template_loader.dart` – `TemplateRenderer` erweitert:**
+   - Neue Methode `_normalizeLineBreaks()`:
+     - Einfache `\n` → Leerzeichen (Fließtext fließt dynamisch)
+     - Leere Zeilen (`\n\n`) → Absatztrenner (bleiben erhalten)
+     - Mehrfache Leerzeichen → einzelnes Leerzeichen
+   - `render()` ruft `_normalizeLineBreaks()` nach der Platzhalter-Ersetzung auf
+
+2. **`cover_letter_default.txt` überarbeitet:**
+   - Feste Zeilenumbrüche entfernt – jeder Absatz ist jetzt eine einzige lange Zeile
+   - 5 saubere Absätze statt 6 Zeilenblöcke
+   - Der PDF-Renderer setzt die Zeilenumbrüche jetzt dynamisch (Blocksatz)
+
+3. **`template_loader.dart` – Fallback-Template bereinigt:**
+   - `_defaultCoverLetterTemplate` auf dieselbe neue Struktur umgestellt
+   - Veraltete Absender/Empfänger-Daten entfernt (werden vom Generator gerendert)
+
+**Verifikation:**
+- Alle 43 Tests bestanden
+- Der Fließtext wird jetzt dynamisch umbrochen (DIN-5008-konformer Blocksatz)

@@ -31,8 +31,8 @@ class CvGenerator {
     final sortedSkills = _sortSkills(cvData.skills, prioritizedSkills);
 
     return pw.MultiPage(
+      // DIN-5008-Ränder kommen aus PdfUtils.pageFormat.
       pageFormat: PdfUtils.pageFormat,
-      margin: const pw.EdgeInsets.all(48),
       // Fußzeile: Identisch zu Deckblatt und Anschreiben (nicht auf Seite 1).
       footer: PdfUtils.buildFooter,
       build: (context) => [
