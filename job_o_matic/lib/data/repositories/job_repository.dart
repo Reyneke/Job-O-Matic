@@ -12,6 +12,9 @@ import '../services/pdf/cv_generator.dart';
 import '../services/cv_data_parser.dart';
 import '../services/api/job_scraper_service.dart';
 import '../services/api/job_title_cleaner.dart';
+import '../services/ai/cover_letter_ai_service.dart';
+import '../services/ai/cover_letter_sanitizer.dart';
+import '../../core/providers/providers.dart';
 
 /// Repository for managing job applications and CV data.
 ///
@@ -43,18 +46,28 @@ class JobRepository extends ChangeNotifier {
   /// Whether the repository has been initialized from database.
   bool _initialized = false;
 
+  /// KI-generierte Anschreiben aktiv? (Einstellung, persistiert).
+  bool _kiAnschreibenEnabled = false;
+
+  /// KI-Service für Anschreiben (Fallback-Kette Gemini → Mistral → Groq).
+  /// Null = KI deaktiviert bzw. nicht injiziert → immer Template.
+  final CoverLetterAiService? _coverLetterAiService;
+
   JobRepository({
     DatabaseRepository? dbRepo,
     PdfGenerator? pdfGenerator,
-  })  : _dbRepo = dbRepo ?? DatabaseRepository(),
-        _pdfGenerator = pdfGenerator ??
-            PdfGenerator(
-              templateLoader: TemplateLoader(),
-              templateRenderer: TemplateRenderer(),
-              coverPageGenerator: CoverPageGenerator(),
-              coverLetterGenerator: CoverLetterGenerator(),
-              cvGenerator: CvGenerator(),
-            );
+    CoverLetterAiService? coverLetterAiService,
+  }) : _dbRepo = dbRepo ?? DatabaseRepository(),
+       _pdfGenerator =
+           pdfGenerator ??
+           PdfGenerator(
+             templateLoader: TemplateLoader(),
+             templateRenderer: TemplateRenderer(),
+             coverPageGenerator: CoverPageGenerator(),
+             coverLetterGenerator: CoverLetterGenerator(),
+             cvGenerator: CvGenerator(),
+           ),
+       _coverLetterAiService = coverLetterAiService;
 
   /// Initialize repository from database (load all persisted data).
   ///
@@ -71,16 +84,20 @@ class JobRepository extends ChangeNotifier {
         _dbRepo.loadApplications(),
         _dbRepo.loadValidatedUrls(),
         _dbRepo.loadFilter('autosaved_input'),
+        _dbRepo.loadFilter('ki_anschreiben'),
       ]);
 
       _applications.addAll(results[0] as List<Application>);
       _validatedUrls.addAll(results[1] as List<String>);
       _autoSavedInput = results[2] as String?;
+      _kiAnschreibenEnabled = (results[3] as String?) == 'true';
 
-      _log.info('JobRepository initialisiert: '
-          '${_applications.length} Applications, '
-          '${_validatedUrls.length} URLs, '
-          '${_cvData != null ? 'CV-Daten vorhanden' : 'keine CV-Daten'}');
+      _log.info(
+        'JobRepository initialisiert: '
+        '${_applications.length} Applications, '
+        '${_validatedUrls.length} URLs, '
+        '${_cvData != null ? 'CV-Daten vorhanden' : 'keine CV-Daten'}',
+      );
       notifyListeners();
     } catch (e) {
       _log.severe('Fehler bei JobRepository-Initialisierung: $e');
@@ -193,10 +210,9 @@ class JobRepository extends ChangeNotifier {
 
     // Insert into DB and update the local copy with the real ID
     _dbRepo.insertApplication(app).then((dbId) {
-      final index = _applications.indexWhere((a) =>
-          a.id == 0 &&
-          a.createdAt == now &&
-          a.jobUrl == jobUrl);
+      final index = _applications.indexWhere(
+        (a) => a.id == 0 && a.createdAt == now && a.jobUrl == jobUrl,
+      );
       if (index >= 0) {
         final updated = _applications[index].copyWith(id: dbId);
         _applications[index] = updated;
@@ -220,16 +236,21 @@ class JobRepository extends ChangeNotifier {
   }
 
   /// Update an application's status and persist.
-  void updateApplicationStatus(int id, ApplicationStatus status,
-      {String? pdfPath, String? errorMessage}) {
+  void updateApplicationStatus(
+    int id,
+    ApplicationStatus status, {
+    String? pdfPath,
+    String? errorMessage,
+  }) {
     final index = _applications.indexWhere((a) => a.id == id);
     if (index >= 0) {
       final updated = _applications[index].copyWith(
         status: status,
         pdfPath: pdfPath ?? _applications[index].pdfPath,
         errorMessage: errorMessage ?? _applications[index].errorMessage,
-        completedAt:
-            status == ApplicationStatus.completed ? DateTime.now() : null,
+        completedAt: status == ApplicationStatus.completed
+            ? DateTime.now()
+            : null,
       );
       _applications[index] = updated;
       _log.info('Applikation $id: Status -> ${status.displayName}');
@@ -246,11 +267,7 @@ class JobRepository extends ChangeNotifier {
     required String company,
     String jobUrl = '',
   }) {
-    _createAndInsert(
-      jobTitle: jobTitle,
-      company: company,
-      jobUrl: jobUrl,
-    );
+    _createAndInsert(jobTitle: jobTitle, company: company, jobUrl: jobUrl);
     _log.info('Applikation hinzugefügt: $jobTitle bei $company');
     notifyListeners();
   }
@@ -276,9 +293,13 @@ class JobRepository extends ChangeNotifier {
       if (result.isSuccess && result.data != null) {
         _cvData = result.data;
         _dbRepo.saveCvData(result.data!);
-        _log.info('CV-Daten geladen für: ${result.data!.personalData.fullName}');
+        _log.info(
+          'CV-Daten geladen für: ${result.data!.personalData.fullName}',
+        );
       } else {
-        _log.warning('CV-Daten nicht geladen: ${result.errors.map((e) => e.message).join(", ")}');
+        _log.warning(
+          'CV-Daten nicht geladen: ${result.errors.map((e) => e.message).join(", ")}',
+        );
       }
     } catch (e) {
       _log.severe('Fehler beim Laden der CV-Daten: $e');
@@ -302,9 +323,20 @@ class JobRepository extends ChangeNotifier {
     updateApplicationStatus(applicationId, ApplicationStatus.processing);
 
     try {
+      // KI-Anschreiben: Einmalig pro Bewerbung generieren und speichern
+      // (Fallback-Kette Gemini → Mistral → Groq; bei Fehlschlag Template).
+      if (_kiAnschreibenEnabled && _coverLetterAiService != null) {
+        await _ensureCoverLetterText(applicationId);
+      }
+
+      final currentApp = getApplication(applicationId);
+      if (currentApp == null) {
+        throw Exception('Application $applicationId nicht gefunden');
+      }
       final pdfPath = await _pdfGenerator.generateApplicationPdf(
-        application: app,
+        application: currentApp,
         cvData: _cvData!,
+        coverLetterText: currentApp.coverLetterText,
       );
       updateApplicationStatus(
         applicationId,
@@ -322,7 +354,105 @@ class JobRepository extends ChangeNotifier {
     }
   }
 
+  /// Generiert und speichert den KI-Anschreiben-Text für eine Bewerbung,
+  /// falls noch keiner existiert.
+  ///
+  /// Fehler der Kette (alle Anbieter fehlgeschlagen / kein Key konfiguriert)
+  /// werden bewusst abgefangen: Das PDF wird dann mit dem Template-Anschreiben
+  /// erzeugt (Fallback gemäß doc/plan/13-Anschreiben-KI.md).
+  Future<void> _ensureCoverLetterText(int applicationId) async {
+    final app = getApplication(applicationId);
+    final cvData = _cvData;
+    final aiService = _coverLetterAiService;
+    if (app == null) {
+      return;
+    }
+    // Nur wenn KEIN Text existiert ODER der persistierte Text korrupt ist
+    // (Gedankenkette, abgeschnitten) nochmal generieren. Einmal sauber erzeugte
+    // (bzw. manuell bearbeitete) Texte bleiben unangetastet.
+    if (_hasValidCoverLetterText(app.coverLetterText)) {
+      return;
+    }
+    if (cvData == null || aiService == null) {
+      return;
+    }
+
+    try {
+      _log.info(
+        'Generiere KI-Anschreiben via '
+        '${aiService.providerName}...',
+      );
+      final text = await aiService.generateCoverLetter(
+        cvData: cvData,
+        application: app,
+      );
+      await saveCoverLetterText(applicationId, text);
+    } on CoverLetterAiException catch (e) {
+      // Bewusster Template-Fallback statt Abbruch
+      _log.warning(
+        'KI-Anschreiben fehlgeschlagen, nutze Template: '
+        '${e.message}',
+      );
+    } catch (e) {
+      _log.severe('Unerwarteter Fehler bei der KI-Generierung: $e');
+    }
+  }
+
+  /// Liefert true, wenn der Anschreiben-Text vorhanden und plausibel ist
+  /// (also nicht verworfen und neu generiert werden muss).
+  bool _hasValidCoverLetterText(String? text) {
+    if (text == null || text.trim().isEmpty) return false;
+    if (CoverLetterSanitizer.isGarbage(text)) {
+      _log.info(
+        'Persistierter Anschreiben-Text als korrupt erkannt '
+        '(${text.length} Zeichen) – wird neu generiert.',
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /// Speichert den Anschreiben-Text für eine Bewerbung.
+  ///
+  /// Wird einmal pro Bewerbung aufgerufen (nach KI-Generierung oder manueller
+  /// Bearbeitung). Der Text wird im Modell und in der DB persistiert, damit
+  /// PDF und Vorschau immer auf identischem Text basieren und nicht bei jedem
+  /// Aufruf neu generiert werden muss (siehe doc/plan/13-Anschreiben-KI.md).
+  Future<void> saveCoverLetterText(int applicationId, String text) async {
+    final index = _applications.indexWhere((a) => a.id == applicationId);
+    if (index < 0) {
+      throw Exception('Application $applicationId nicht gefunden');
+    }
+
+    final updated = _applications[index].copyWith(coverLetterText: text);
+    _applications[index] = updated;
+    await _dbRepo.updateApplication(updated);
+
+    _log.info(
+      'Anschreiben-Text gespeichert: Application $applicationId '
+      '(${text.length} Zeichen)',
+    );
+    notifyListeners();
+  }
+
+  /// Liefert den gespeicherten Anschreiben-Text einer Bewerbung
+  /// (oder null, wenn noch keiner existiert).
+  String? getCoverLetterText(int applicationId) =>
+      getApplication(applicationId)?.coverLetterText;
+
   // -- CV Data --
+
+  /// Ist die KI-generierte Anschreiben-Funktion aktiv?
+  bool get kiAnschreibenEnabled => _kiAnschreibenEnabled;
+
+  /// Schaltet die KI-Anschreiben-Funktion um und persistiert die Einstellung.
+  void setKiAnschreibenEnabled(bool enabled) {
+    if (_kiAnschreibenEnabled == enabled) return;
+    _kiAnschreibenEnabled = enabled;
+    _dbRepo.saveFilter('ki_anschreiben', enabled ? 'true' : 'false');
+    _log.info('KI-Anschreiben ${enabled ? 'aktiviert' : 'deaktiviert'}');
+    notifyListeners();
+  }
 
   /// Set CV data and persist.
   void setCvData(CvData data) {
@@ -359,7 +489,8 @@ class JobRepository extends ChangeNotifier {
     }
     final added = _selectedJobIds.length - before;
     _log.info(
-        'Jobs aus Suche übernommen: $added (davon neu: $added von ${jobIds.length})');
+      'Jobs aus Suche übernommen: $added (davon neu: $added von ${jobIds.length})',
+    );
     if (added > 0) notifyListeners();
   }
 
@@ -381,10 +512,10 @@ class JobRepository extends ChangeNotifier {
       _applications.add(app);
       newApps.add(app);
       _dbRepo.insertApplication(app).then((dbId) {
-        final index = _applications.indexWhere((a) =>
-            a.id == 0 &&
-            a.createdAt == now &&
-            a.jobTitle == 'Stelle $jobId');
+        final index = _applications.indexWhere(
+          (a) =>
+              a.id == 0 && a.createdAt == now && a.jobTitle == 'Stelle $jobId',
+        );
         if (index >= 0) {
           _applications[index] = _applications[index].copyWith(id: dbId);
         }
@@ -441,5 +572,8 @@ class JobRepository extends ChangeNotifier {
 
 /// Riverpod provider for JobRepository as ChangeNotifier.
 final jobRepositoryProvider = ChangeNotifierProvider<JobRepository>((ref) {
-  return JobRepository();
+  return JobRepository(
+    // Fallback-Kette Gemini → Mistral → Groq (doc/plan/13-Anschreiben-KI.md)
+    coverLetterAiService: ref.watch(coverLetterAiServiceProvider),
+  );
 });

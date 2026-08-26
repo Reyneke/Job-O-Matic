@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import '../../core/providers/providers.dart';
+import '../../data/repositories/job_repository.dart';
 import '../../data/services/api/api_key_service.dart';
 
 /// Screen for configuring API keys (Brevo, Adzuna, SerpAPI, etc.).
@@ -24,6 +26,9 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
   final _adzunaApiKeyController = TextEditingController();
   final _serpApiKeyController = TextEditingController();
   final _brevoApiKeyController = TextEditingController();
+  final _geminiApiKeyController = TextEditingController();
+  final _mistralApiKeyController = TextEditingController();
+  final _groqApiKeyController = TextEditingController();
   bool _isLoading = true;
   bool _obscureText = true;
 
@@ -43,6 +48,12 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
     ApiKeyService.adzunaApiKey: 'API-Key aus dem Adzuna Developer Dashboard',
     ApiKeyService.serpApiKey: 'API-Key für Google Jobs via SerpAPI',
     ApiKeyService.brevoApiKey: 'API-Key v3 aus dem Brevo SMTP & API Bereich',
+    ApiKeyService.geminiApiKey: 'API-Key aus Google AI Studio '
+        '(kostenloses Kontingent, für KI-generierte Anschreiben)',
+    ApiKeyService.mistralApiKey: 'API-Key von La Plateforme (mistral.ai) '
+        '- EU-Alternative für KI-Anschreiben',
+    ApiKeyService.groqApiKey: 'API-Key von console.groq.com '
+        '- schnelle Alternative für KI-Anschreiben',
   };
 
   static const _keyIcons = <String, IconData>{
@@ -51,6 +62,9 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
     ApiKeyService.adzunaApiKey: Icons.vpn_key,
     ApiKeyService.serpApiKey: Icons.search,
     ApiKeyService.brevoApiKey: Icons.email,
+    ApiKeyService.geminiApiKey: Icons.auto_awesome,
+    ApiKeyService.mistralApiKey: Icons.alternate_email,
+    ApiKeyService.groqApiKey: Icons.bolt,
   };
 
   @override
@@ -71,6 +85,10 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
           await keyService.loadKey(ApiKeyService.adzunaApiKey);
       final serpKey = await keyService.loadKey(ApiKeyService.serpApiKey);
       final brevoKey = await keyService.loadKey(ApiKeyService.brevoApiKey);
+      final geminiKey = await keyService.loadKey(ApiKeyService.geminiApiKey);
+      final mistralKey =
+          await keyService.loadKey(ApiKeyService.mistralApiKey);
+      final groqKey = await keyService.loadKey(ApiKeyService.groqApiKey);
 
       if (mounted) {
         setState(() {
@@ -80,6 +98,9 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
           _adzunaApiKeyController.text = adzunaApiKey ?? '';
           _serpApiKeyController.text = serpKey ?? '';
           _brevoApiKeyController.text = brevoKey ?? '';
+          _geminiApiKeyController.text = geminiKey ?? '';
+          _mistralApiKeyController.text = mistralKey ?? '';
+          _groqApiKeyController.text = groqKey ?? '';
           _isLoading = false;
         });
       }
@@ -129,6 +150,9 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
     _adzunaApiKeyController.dispose();
     _serpApiKeyController.dispose();
     _brevoApiKeyController.dispose();
+    _geminiApiKeyController.dispose();
+    _mistralApiKeyController.dispose();
+    _groqApiKeyController.dispose();
     super.dispose();
   }
 
@@ -150,6 +174,12 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
           return _serpApiKeyController;
         case ApiKeyService.brevoApiKey:
           return _brevoApiKeyController;
+        case ApiKeyService.geminiApiKey:
+          return _geminiApiKeyController;
+        case ApiKeyService.mistralApiKey:
+          return _mistralApiKeyController;
+        case ApiKeyService.groqApiKey:
+          return _groqApiKeyController;
         default:
           return _baKeyController;
       }
@@ -241,12 +271,54 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
       appBar: AppBar(
         title: const Text('API-Key Verwaltung'),
         centerTitle: true,
+        // Top-Level-Route (/settings): Flutter baut keinen automatischen
+        // Back-Button – daher explizit zurück zum aufrufenden Bildschirm.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Zurück',
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // KI-Anschreiben Schalter (Phase 3)
+                Card(
+                  child: SwitchListTile(
+                    value: ref.watch(jobRepositoryProvider).kiAnschreibenEnabled,
+                    onChanged: (value) {
+                      setState(() {});
+                      ref
+                          .read(jobRepositoryProvider)
+                          .setKiAnschreibenEnabled(value);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(value
+                              ? 'KI-Anschreiben aktiviert. Neue Bewerbungen '
+                                  'werden per KI personalisiert.'
+                              : 'KI-Anschreiben deaktiviert. Es wird die '
+                                  'Template-Vorlage verwendet.'),
+                        ),
+                      );
+                    },
+                    title: const Text('KI-Anschreiben',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text(
+                        'Anschreiben einmalig per KI generieren '
+                        '(Fallback-Kette: Gemini → Mistral → Groq)'),
+                    secondary: Icon(Icons.auto_awesome,
+                        color: Theme.of(context).colorScheme.primary),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 // Info-Karte
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -309,6 +381,9 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
                         _buildKeyField(ApiKeyService.adzunaApiKey),
                         _buildKeyField(ApiKeyService.serpApiKey),
                         _buildKeyField(ApiKeyService.brevoApiKey),
+                        _buildKeyField(ApiKeyService.geminiApiKey),
+                        _buildKeyField(ApiKeyService.mistralApiKey),
+                        _buildKeyField(ApiKeyService.groqApiKey),
                       ],
 
                 const SizedBox(height: 16),

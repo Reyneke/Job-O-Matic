@@ -36,6 +36,12 @@ class Application {
   final DateTime createdAt;
   final DateTime? completedAt;
 
+  /// KI-generierter (oder manuell bearbeiteter) Anschreiben-Text.
+  ///
+  /// Wird einmal pro Bewerbung generiert und persistiert, damit PDF und
+  /// Vorschau auf identischem Text basieren (kein Regenerieren pro Aufruf).
+  final String? coverLetterText;
+
   const Application({
     required this.id,
     required this.jobTitle,
@@ -48,6 +54,7 @@ class Application {
     this.errorMessage,
     required this.createdAt,
     this.completedAt,
+    this.coverLetterText,
   });
 
   Application copyWith({
@@ -62,6 +69,7 @@ class Application {
     String? errorMessage,
     DateTime? createdAt,
     DateTime? completedAt,
+    String? coverLetterText,
   }) {
     return Application(
       id: id ?? this.id,
@@ -75,6 +83,7 @@ class Application {
       errorMessage: errorMessage ?? this.errorMessage,
       createdAt: createdAt ?? this.createdAt,
       completedAt: completedAt ?? this.completedAt,
+      coverLetterText: coverLetterText ?? this.coverLetterText,
     );
   }
 
@@ -90,6 +99,7 @@ class Application {
         'errorMessage': errorMessage,
         'createdAt': createdAt.toIso8601String(),
         'completedAt': completedAt?.toIso8601String(),
+        'coverLetterText': coverLetterText,
       };
 
   factory Application.fromJson(Map<String, dynamic> json) => Application(
@@ -109,5 +119,6 @@ class Application {
         completedAt: json['completedAt'] != null
             ? DateTime.parse(json['completedAt'] as String)
             : null,
+        coverLetterText: json['coverLetterText'] as String?,
       );
 }

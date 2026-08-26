@@ -166,6 +166,74 @@ class ApplicationDetailScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
 
+            // Anschreiben-Text (KI-generiert / manuell bearbeitet) – Phase 3
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text('Anschreiben',
+                            style: theme.textTheme.titleMedium),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: () => _editCoverLetter(
+                            context,
+                            repo,
+                            applicationId,
+                            application.coverLetterText ?? '',
+                          ),
+                          icon: const Icon(Icons.edit, size: 18),
+                          label: Text(
+                            application.coverLetterText?.isNotEmpty == true
+                                ? 'Bearbeiten'
+                                : 'Hinzufügen',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (application.coverLetterText?.isNotEmpty == true)
+                      InkWell(
+                        onTap: () => _editCoverLetter(
+                          context,
+                          repo,
+                          applicationId,
+                          application.coverLetterText!,
+                        ),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            application.coverLetterText!,
+                            style: theme.textTheme.bodySmall,
+                            maxLines: 12,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                    else
+                      Text(
+                        'Noch kein Anschreiben-Text gespeichert. Bei aktivierter '
+                        'KI-Funktion wird er bei der nächsten Generierung '
+                        'automatisch erstellt – oder hier manuell hinzufügen.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
             // PDF Preview
             if (hasPdf)
               Card(
@@ -382,6 +450,77 @@ class ApplicationDetailScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Öffnet den Dialog zum Bearbeiten des Anschreiben-Texts und
+  /// speichert Änderungen über das Repository zurück in die DB.
+  ///
+  /// Kleine manuelle Korrekturen erfordern so keine KI-Neugenerierung
+  /// (siehe doc/plan/13-Anschreiben-KI.md, Phase 3).
+  Future<void> _editCoverLetter(
+    BuildContext context,
+    JobRepository repo,
+    int applicationId,
+    String initialText,
+  ) async {
+    final controller = TextEditingController(text: initialText);
+    final theme = Theme.of(context);
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Anschreiben bearbeiten'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: controller,
+            maxLines: 14,
+            autofocus: initialText.isEmpty,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: 'Anschreiben-Text (Absätze durch Leerzeilen trennen)...',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.save, size: 18),
+            label: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+
+    final newText = controller.text.trim();
+    controller.dispose();
+
+    if (saved != true || newText == initialText.trim()) return;
+
+    try {
+      await repo.saveCoverLetterText(applicationId, newText);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Anschreiben gespeichert.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Speichern: $e'),
+            backgroundColor: theme.colorScheme.error,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _sharePdf(String pdfPath) async {

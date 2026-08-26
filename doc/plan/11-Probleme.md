@@ -184,6 +184,102 @@ Die Vorlage `cover_letter_default.txt` enthielt **feste Zeilenumbrüche nach ~72
    - `_defaultCoverLetterTemplate` auf dieselbe neue Struktur umgestellt
    - Veraltete Absender/Empfänger-Daten entfernt (werden vom Generator gerendert)
 
+## Bug Texte unvollständig oder falsch
+
+Nach Einbettung von AI generierten Anschreiben, sind die Ergebnisse, welche wir zurückbekommen, un vollständigo der schlichtweg falsch. Als Beispiel:
+
+"(...)
+5: Formal closing (optional or combined with 4 to respect the 5-paragraph limit).* Keep it to 4 or 5
+paragraphs.
+**Refining Text to meet (...)"
+
+oder 
+
+"(...)
+
+Sehr geehrte Damen und Herren,
+mit großem Interesse bewerbe ich mich bei Bliq für die Position als Senior Flutter Developer und Client
+Engineer. Als Diplom-Ingenieur fü
+
+(...)"
+
+Woran liegt das?
+
+**Root Cause (gefunden):**
+
+Die beiden Beispiele haben **zwei unterschiedliche Ursachen**, beide hängen mit dem KI-Anbieter Gemini (`gemini-3.5-flash`) zusammen:
+
+**Beispiel 1 ("5: Formal closing ... **Refining Text to meet"):**
+`gemini-3.5-flash` ist ein **Reasoning-Modell** – es denkt intern nach ("Gedankenkette"), bevor es antwortet. Die Gemini-API (`generateContent`) liefert diese internen Gedanken als zusätzliche **`thought`-Parts** in der Antwort (`parts[]` mit dem Flag `thought: true`). Der Parser in `gemini_cover_letter_ai_service.dart` sammelte bislang **alle** `text`-Felder ein – **auch die der Gedankenkette**. Dadurch landete die Modell-Planung ("Schritt 5: formeller Abschluss …") im Anschreiben.
+
+**Beispiel 2 (Abbruch mitten im Wort "...Als Diplom-Ingenieur fü"):**
+Die Antwort wurde **abgeschnitten**. Der `maxOutputTokens`-Wert lag bei nur **1024** – Reporting-Modelle brauchen für die Gedankenkette + die eigentliche Antwort mehr Token, sodass die sichtbare Antwort vorzeitig endete.
+
+**Fix (implementiert):**
+
+1. **`job_o_matic/lib/data/services/ai/gemini_cover_letter_ai_service.dart`**
+   - `thinkingConfig: {'includeThoughts': false}` im `generationConfig` ergänzt → die Gedankenkette wird gar nicht erst angefordert.
+   - `_extractText()` filtert zusätzlich Parts mit `thought: true` heraus → Defense-in-Depth, falls der Anbieter doch Thoughts liefert:
+   ```dart
+   return parts
+       .where((p) => p is Map<String, dynamic> && p['thought'] != true)
+       .map((p) => (p as Map<String, dynamic>)['text'] as String? ?? '')
+       .join();
+   ```
+
+2. **`job_o_matic/lib/data/services/ai/cover_letter_prompt_builder.dart`**
+   - `maxOutputTokens` von **1024 → 8192** erhöht, damit Reasoning-Modelle genug Spielraum für eine ungekürzte Antwort haben (die Länge wird weiterhin per Prompt auf ~350 Wörter begrenzt).
+
+Problem bestand zunächst weiterhin – **zweiter, entscheidender Root Cause:**
+
+Der schlechte KI-Text wurde **einmal pro Bewerbung in der Datenbank persistiert** (Spalte `cover_letter_text` in `applications`). `_ensureCoverLetterText()` in `job_repository.dart` brach bislang ab, **sobald Text vorhanden war** (`app.coverLetterText?.trim().isNotEmpty == true → return`). Dadurch wurden die **alten, korrupten Texte** bei jedem Neu-Generieren einfach wiederverwendet – die API-Fixes oben griffen nie, weil `generateCoverLetter()` gar nicht mehr aufgerufen wurde.
+
+**Fix (ergänzt):**
+
+1. **`job_o_matic/lib/data/services/ai/cover_letter_sanitizer.dart`**
+   - Neue statische, testbare Heuristik **`isGarbage(String)`**: erkennt die beiden Fehlermuster
+     - Reasoning-Gedankenkette (englische Meta-Planung wie „Formal closing", „5-paragraph limit", „Refining", nummerierte Planung `1: Opening`)
+     - abgeschnittener Text (keine Grußformel „Mit freundlichen Grüßen", zu kurz, < 80 Zeichen)
+
+2. **`job_o_matic/lib/data/repositories/job_repository.dart`**
+   - `_ensureCoverLetterText()` ruft jetzt `CoverLetterSanitizer.isGarbage()` auf. Ist der persistierte Text korrupt, wird er **verworfen und neu generiert** (statt zu den alten, kaputten Texten zu bleiben):
+   ```dart
+   if (app == null) return;
+   if (_hasValidCoverLetterText(app.coverLetterText)) {
+     return; // sauber/manuell bearbeitet → beibehalten
+   }
+   // sonst: regulärer KI-Aufruf + saveCoverLetterText(…) (überschreibt)
+   ```
+   - Gültige (und manuell bearbeitete) Texte bleiben unangetastet.
+
+Nach einer weiteren Testrunde neues Symptom: **Text bricht weiterhin mitten im Satz ab** („…Neben meinen technischen…" → Ende), aber jetzt als sauberes deutsches Anschreiben. Falsche Spur „Empfangsbuffer": Der Dart-`http`-Client liest den HTTP-Body **immer vollständig** in den Speicher – es gibt keinen begrenzten Empfangsbuffer, der erweitert werden müsste.
+
+**Dritter Root Cause (erneutes Abschneiden):**
+
+`gemini-3.5-flash` ist ein **Thinking-Modell**: Es verbraucht Token für die interne Gedankenkette UND den sichtbaren Text. `maxOutputTokens` begrenzt bei Gemini 2.5+/3.x die **SUMME aus Thinking- + Output-Tokens** (siehe ai.google.dev Thinking-Guide: „Control thinking budget … to save tokens"). Bei `maxOutputTokens: 8192` konnte die Gedankenkette den größten Teil aufbrauchen → der sichtbare Text endete vorzeitig, `finishReason: MAX_TOKENS`. Der Code speicherte den abgeschnittenen Text, weil `finishReason` nicht ausgewertet wurde.
+
+**Fix (ergänzt, 3. und 4.):**
+
+3. **`job_o_matic/lib/data/services/ai/cover_letter_prompt_builder.dart`**
+   - `maxOutputTokens`: 8192 → **16384** (genug Gesamtbudget; die eigentliche Antwort braucht ~800 Token)
+   - Neu: `thinkingBudget = 1024` – begrenzt die Gedankenkette (einfache Aufgabe → minimales Denken laut Google-Guide), sodass das Budget für den sichtbaren Text bleibt
+
+4. **`job_o_matic/lib/data/services/ai/gemini_cover_letter_ai_service.dart` – Retry mit Budget-Eskalation (Hauptlösung):**
+   Da die genauen Modell-Limits schwanken und sich die reale Modelltabelle ständig ändert, wird nicht mehr auf einen festen Wert vertraut. Der Service macht bis zu `maxAttempts = 3` Versuche: Bei `finishReason == MAX_TOKENS` (abgeschnittene Antwort) wird das Output-Budget schrittweise erhöht (`8192 → 16384 → 32768`), das Denk-Budget bleibt auf `thinkingBudget = 1024`:
+   ```dart
+   for (int attempt = 0; attempt < maxAttempts; attempt++) {
+     final maxTokens = _outputBudgetForAttempt(attempt);  // steigend
+     // … Request mit maxOutputTokens & vision thinkingConfig …
+     if (_finishReason(body) == 'MAX_TOKENS') { continue; }  // erneut
+     // sonst: validieren, sanitizen, speichern
+   }
+   throw lastError;  // nur wenn ALLE Versuche abgeschnitten waren
+   ```
+   - Nur eine **vollständige** Antwort (kein `MAX_TOKENS`) wird gespeichert
+   - Erst wenn alle 3 Versuche abbrechen, wird an die Fallback-Kette (Mistral/Groq/Template) weitergereicht
+   - `isGarbage`-Heuristik bleibt als Netzfänger für bereits persistierte abgeschnittene Texte
+
 **Verifikation:**
-- Alle 43 Tests bestanden
-- Der Fließtext wird jetzt dynamisch umbrochen (DIN-5008-konformer Blocksatz)
+- 5 Unit-Tests für `CoverLetterSanitizer.isGarbage` in `test/services/ai/cover_letter_sanitizer_test.dart`
+- 4 Gemini-Tests angepasst/ergänzt: thinkingConfig mit `thinkingBudget` + erstem `maxOutputTokens`, neuer Retry-Test „erhöht Output-Budget bei MAX_TOKENS und liefert vollständige Antwort beim nächsten Versuch", Test „bricht bei finishReason MAX_TOKENS ab"
+- Alle 109 Tests bestanden, `dart analyze` ohne Issues.

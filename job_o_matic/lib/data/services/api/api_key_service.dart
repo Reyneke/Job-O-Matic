@@ -19,6 +19,9 @@ class ApiKeyService {
   static const String adzunaApiKey = 'adzuna_api_key';
   static const String serpApiKey = 'serpapi';
   static const String brevoApiKey = 'brevo';
+  static const String geminiApiKey = 'gemini';
+  static const String mistralApiKey = 'mistral';
+  static const String groqApiKey = 'groq';
 
   ApiKeyService({FlutterSecureStorage? storage})
       : _storage = storage ?? const FlutterSecureStorage();
@@ -48,7 +51,16 @@ class ApiKeyService {
 
   /// Alle gespeicherten Keys abrufen (für Konfigurationsscreen).
   Future<Map<String, bool>> getKeyStatus() async {
-    final keys = [baApiKey, adzunaAppId, adzunaApiKey, serpApiKey, brevoApiKey];
+    final keys = [
+      baApiKey,
+      adzunaAppId,
+      adzunaApiKey,
+      serpApiKey,
+      brevoApiKey,
+      geminiApiKey,
+      mistralApiKey,
+      groqApiKey,
+    ];
     final result = <String, bool>{};
     for (final name in keys) {
       result[name] = await hasKey(name);

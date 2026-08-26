@@ -230,6 +230,7 @@ class DatabaseRepository {
       'error_message': app.errorMessage,
       'created_at': app.createdAt.toIso8601String(),
       'completed_at': app.completedAt?.toIso8601String(),
+      'cover_letter_text': app.coverLetterText,
     };
     if (includeId) {
       row['id'] = app.id;
@@ -258,6 +259,7 @@ class DatabaseRepository {
         completedAt: row['completed_at'] != null
             ? DateTime.parse(row['completed_at'] as String)
             : null,
+        coverLetterText: row['cover_letter_text'] as String?,
       );
 
   Map<String, dynamic> _cvDataToRow(CvData cvData) => {

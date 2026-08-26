@@ -56,7 +56,7 @@ class DatabaseHelper {
 
     return openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -80,7 +80,8 @@ class DatabaseHelper {
         pdf_path         TEXT,
         error_message    TEXT,
         created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
-        completed_at     TEXT
+        completed_at     TEXT,
+        cover_letter_text TEXT
       )
     ''');
 
@@ -198,6 +199,13 @@ class DatabaseHelper {
       _log.info('Migration auf Version 5: certificates_json-Spalte hinzufügen');
       await db.execute('''
         ALTER TABLE cv_data ADD COLUMN certificates_json TEXT NOT NULL DEFAULT '[]'
+      ''');
+    }
+    if (oldVersion < 6) {
+      _log.info(
+          'Migration auf Version 6: cover_letter_text-Spalte hinzufügen');
+      await db.execute('''
+        ALTER TABLE applications ADD COLUMN cover_letter_text TEXT
       ''');
     }
   }

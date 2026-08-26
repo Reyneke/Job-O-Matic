@@ -33,10 +33,15 @@ class PdfGenerator {
   });
 
   /// Generiert eine vollständige Bewerbung als PDF und gibt den Dateipfad zurück.
+  ///
+  /// [coverLetterText]: Optionaler fertiger Anschreiben-Text (KI-generiert
+  /// oder manuell bearbeitet). Ist er gesetzt, wird er statt der gerenderten
+  /// Vorlage verwendet – siehe doc/plan/13-Anschreiben-KI.md.
   Future<String> generateApplicationPdf({
     required Application application,
     required CvData cvData,
     String? customTemplateName,
+    String? coverLetterText,
   }) async {
     _log.info(
         'PDF-Generierung gestartet für: ${application.jobTitle} bei ${application.company}');
@@ -61,12 +66,21 @@ class PdfGenerator {
       pageCount++;
     }
 
-    // 2. Anschreiben (mit Template)
+    // 2. Anschreiben (KI-/Editor-Text falls vorhanden, sonst Template)
     if (_coverLetterGenerator != null) {
-      final templateText = await _templateLoader.loadTemplate(
-        customTemplateName ?? 'cover_letter_default',
-      );
-      final renderedLetter = _templateRenderer.render(templateText, {
+      final hasCustomLetter =
+          coverLetterText != null && coverLetterText.trim().isNotEmpty;
+
+      String renderedLetter;
+      if (hasCustomLetter) {
+        renderedLetter = coverLetterText;
+        _log.info(
+            'Verwende gespeicherten Anschreiben-Text (${coverLetterText.length} Zeichen)');
+      } else {
+        final templateText = await _templateLoader.loadTemplate(
+          customTemplateName ?? 'cover_letter_default',
+        );
+        renderedLetter = _templateRenderer.render(templateText, {
         'firstName': cvData.personalData.firstName,
         'lastName': cvData.personalData.lastName,
         'address': cvData.personalData.address ?? '',
@@ -85,7 +99,8 @@ class PdfGenerator {
             application.jobDescription),
         // Persönliche Anrede (DIN 5008)
         'salutation': _buildSalutation(cvData.personalData),
-      });
+        });
+      }
       final letterPage = _coverLetterGenerator.build(
         personalData: cvData.personalData,
         renderedText: renderedLetter,

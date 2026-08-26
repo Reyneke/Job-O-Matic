@@ -21,6 +21,11 @@ import '../../data/services/email/email_template_service.dart';
 import '../../data/services/email/mail_queue_service.dart';
 import '../../data/services/email/circuit_breaker.dart';
 import '../../data/services/email/mail_dispatcher.dart';
+import '../../data/services/ai/cover_letter_ai_service.dart';
+import '../../data/services/ai/fallback_cover_letter_ai_service.dart';
+import '../../data/services/ai/gemini_cover_letter_ai_service.dart';
+import '../../data/services/ai/groq_cover_letter_ai_service.dart';
+import '../../data/services/ai/mistral_cover_letter_ai_service.dart';
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -153,9 +158,7 @@ final autosaveServiceProvider = Provider<AutosaveService>((ref) {
 // ---------------------------------------------------------------------------
 
 final pdfCleanupServiceProvider = Provider<PdfCleanupService>((ref) {
-  return PdfCleanupService(
-    dbRepository: ref.read(databaseRepositoryProvider),
-  );
+  return PdfCleanupService(dbRepository: ref.read(databaseRepositoryProvider));
 });
 
 // ---------------------------------------------------------------------------
@@ -186,4 +189,48 @@ final mailDispatcherProvider = Provider<MailDispatcher>((ref) {
     templateService: ref.read(emailTemplateServiceProvider),
     circuitBreaker: ref.read(circuitBreakerProvider),
   );
+});
+
+// ---------------------------------------------------------------------------
+// KI-Anschreiben (Phase 2+3, doc/plan/13-Anschreiben-KI.md)
+// ---------------------------------------------------------------------------
+
+/// Primärer KI-Anbieter für Anschreiben (Google Gemini).
+///
+/// Der API-Key wird intern über den [ApiKeyService] (`geminiApiKey`) geladen.
+final geminiCoverLetterAiServiceProvider = Provider<GeminiCoverLetterAiService>(
+  (ref) {
+    return GeminiCoverLetterAiService(logger: ref.read(appLoggerProvider));
+  },
+);
+
+/// Erste Alternative: Mistral (EU-Anbieter, DSGVO-freundlich).
+final mistralCoverLetterAiServiceProvider =
+    Provider<MistralCoverLetterAiService>((ref) {
+      return MistralCoverLetterAiService(
+        logger: ref.read(appLoggerProvider),
+        apiKeyLoader: () =>
+            ApiKeyService().loadKey(ApiKeyService.mistralApiKey),
+      );
+    });
+
+/// Zweite Alternative: Groq (extrem schnell, offene Modelle).
+final groqCoverLetterAiServiceProvider = Provider<GroqCoverLetterAiService>((
+  ref,
+) {
+  return GroqCoverLetterAiService(
+    logger: ref.read(appLoggerProvider),
+    apiKeyLoader: () => ApiKeyService().loadKey(ApiKeyService.groqApiKey),
+  );
+});
+
+/// Aktiver KI-Anschreiben-Service als Fallback-Kette:
+/// Gemini → Mistral → Groq. Schlägt alles fehl, greift der
+/// Template-Fallback auf Ebene des Aufrufers.
+final coverLetterAiServiceProvider = Provider<CoverLetterAiService>((ref) {
+  return FallbackCoverLetterAiService([
+    ref.read(geminiCoverLetterAiServiceProvider),
+    ref.read(mistralCoverLetterAiServiceProvider),
+    ref.read(groqCoverLetterAiServiceProvider),
+  ]);
 });

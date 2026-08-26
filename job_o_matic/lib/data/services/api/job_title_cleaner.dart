@@ -2,11 +2,45 @@
 class JobTitleCleaner {
   JobTitleCleaner._();
 
+  /// Normalisiert Mojibake, das entsteht, wenn UTF-8-kodierte Zeichen
+  /// von Webseiten als Windows-1252 interpretiert werden (Scraping).
+  ///
+  /// Beispiel: en-Dash '–' (UTF-8: E2 80 93) dekodiert als Windows-1252
+  /// ergibt 'â€“' (â + € + "). Dadurch schlagen die Trennzeichen-Regexen
+  /// fehl. Diese Methode normalisiert zurück auf korrektes Unicode.
+  static String _normalizeMojibake(String text) {
+    return text
+        // En-Dash – (U+2013, UTF-8: E2 80 93 → â€“)
+        .replaceAll('\u00e2\u20ac\u201c', '\u2013')
+        // Em-Dash — (U+2014, UTF-8: E2 80 94 → â€œ)
+        .replaceAll('\u00e2\u20ac\u201d', '\u2014')
+        // Right single quote ' (U+2019, UTF-8: E2 80 99 → â€™)
+        .replaceAll('\u00e2\u20ac\u2122', '\u2019')
+        // Left single quote ' (U+2018, UTF-8: E2 80 98 → â€˜)
+        .replaceAll('\u00e2\u20ac\u02dc', '\u2018')
+        // Left double quote " (U+201C, UTF-8: E2 80 9C → âœ)
+        .replaceAll('\u00e2\u20ac\u0152', '\u201c')
+        // Right double quote " (U+201D, UTF-8: E2 80 9D → âŸ)
+        .replaceAll('\u00e2\u20ac\u0178', '\u201d')
+        // Non-breaking space (U+00A0, UTF-8: C2 A0 → Â )
+        .replaceAll('\u00c2\u00a0', '\u00a0')
+        // Stray Â (from partially decoded UTF-8)
+        .replaceAll('\u00c2', '')
+        // German umlauts
+        .replaceAll('\u00c3\u00a4', '\u00e4') // ä
+        .replaceAll('\u00c3\u00b6', '\u00f6') // ö
+        .replaceAll('\u00c3\u00bc', '\u00fc') // ü
+        .replaceAll('\u00c3\u009f', '\u00df'); // ß
+  }
+
   /// Bereinigt einen rohen Job-Titel.
   static String cleanJobTitle(String rawTitle) {
     if (rawTitle.isEmpty) return '';
 
     var title = rawTitle.trim();
+
+    // 0. Mojibake normalisieren (UTF-8 als Windows-1252 interpretiert)
+    title = _normalizeMojibake(title);
 
     // 1. Bekannte Trennzeichen für Suffixe entfernen.
     final separators = [
@@ -67,9 +101,10 @@ class JobTitleCleaner {
     }
 
     // TLD-ähnliche Endungen
-    if (RegExp(r'\.(com|de|io|net|org|jobs|careers|co|eu)\b',
-            caseSensitive: false)
-        .hasMatch(text)) {
+    if (RegExp(
+      r'\.(com|de|io|net|org|jobs|careers|co|eu)\b',
+      caseSensitive: false,
+    ).hasMatch(text)) {
       return true;
     }
 

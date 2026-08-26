@@ -18,16 +18,17 @@ class ApiClient {
   final Logger _log;
   final http.Client _client;
   final Duration _timeout;
-  final ApiKeyService _keyService;
+  final ApiKeyService? _keyService;
 
   ApiClient({
     required Logger logger,
-    required this._keyService,
+    ApiKeyService? keyService,
     http.Client? client,
     Duration? timeout,
   })  : _log = logger,
         _client = client ?? http.Client(),
-        _timeout = timeout ?? defaultTimeout;
+        _timeout = timeout ?? defaultTimeout,
+        _keyService = keyService;
 
   /// HTTP-GET mit Retry-Logik.
   Future<http.Response> get(
@@ -41,7 +42,7 @@ class ApiClient {
     };
 
     // API-Key automatisch laden, wenn angefordert
-    if (apiKeyName != null) {
+    if (apiKeyName != null && _keyService != null) {
       final key = await _keyService.loadKey(apiKeyName);
       if (key != null && key.isNotEmpty) {
         headers['X-API-Key'] = key;
