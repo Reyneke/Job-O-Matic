@@ -544,8 +544,37 @@ class JobRepository extends ChangeNotifier {
 
   /// Set all applications back to queued (for re-processing in debug mode).
   void resetAllToQueued() {
+    final count = _resetApplicationsToQueued(
+      _applications.map((a) => a.id).toSet(),
+    );
+    if (count > 0) {
+      _log.info('Alle Applikationen auf "wartend" zurückgesetzt');
+      notifyListeners();
+    } else {
+      _log.info('Keine Applikationen zum Zurücksetzen auf "wartend"');
+    }
+  }
+
+  /// Set specific applications (by id) back to queued (debug mode).
+  /// Already-queued applications are skipped.
+  void resetToQueued(Set<int> ids) {
+    final count = _resetApplicationsToQueued(ids);
+    if (count > 0) {
+      _log.info('$count Applikation(en) auf "wartend" zurückgesetzt');
+      notifyListeners();
+    }
+  }
+
+  int _resetApplicationsToQueued(Set<int> ids) {
+    var changed = 0;
     for (int i = 0; i < _applications.length; i++) {
-      final updated = _applications[i].copyWith(
+      final current = _applications[i];
+      // Skip applications not selected or already waiting.
+      if (!ids.contains(current.id) ||
+          current.status == ApplicationStatus.queued) {
+        continue;
+      }
+      final updated = current.copyWith(
         status: ApplicationStatus.queued,
         pdfPath: null,
         errorMessage: null,
@@ -553,9 +582,9 @@ class JobRepository extends ChangeNotifier {
       );
       _applications[i] = updated;
       _dbRepo.updateApplication(updated);
+      changed++;
     }
-    _log.info('Alle Applikationen auf "wartend" zurückgesetzt');
-    notifyListeners();
+    return changed;
   }
 
   // -- Internal --

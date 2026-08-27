@@ -279,7 +279,62 @@ Nach einer weiteren Testrunde neues Symptom: **Text bricht weiterhin mitten im S
    - Erst wenn alle 3 Versuche abbrechen, wird an die Fallback-Kette (Mistral/Groq/Template) weitergereicht
    - `isGarbage`-Heuristik bleibt als Netzfänger für bereits persistierte abgeschnittene Texte
 
+## Bug Zertifikate werden bei Generierung nicht angehängt
+
+Was der Titel sagt. Die PDF Varianten der Zertifikate werden bei der Generierung nicht angehängt, sind aber nötig.
+
+**Root Cause (gefunden):**
+
+1. Das Datenmodell `Certificate` hatte **kein Feld für eine PDF-Datei**, und die YAML (`cv_data.yaml`) enthielt keine Dateipfade – die Zertifikats-PDFs lagen ausschließlich außerhalb des Projekts (`OneDrive\Dokumente\CV\`).
+2. `PdfGenerator.generateApplicationPdf()` speicherte nur das generierte Dokument (Deckblatt + Anschreiben + Lebenslauf). Es gab **keinerlei Merge-Schritt** für externe PDFs – das `pdf`-Paket kann generieren, aber keine fremden PDFs einlesen/anhängen.
+
+**Fix (implementiert):**
+
+1. **`pubspec.yaml`**
+   - Neues Package `pdf_combiner: ^6.2.1` (Windows via gebündeltem Google-PDFium, kein Setup nötig)
+   - `share_plus`: ^9.0.0 → **^10.0.0** ( Dependency-Konflikt: pdf_combiner braucht `web ^1.0`, share_plus 9 pinnt `web ^0.5`)
+2. **Zertifikats-PDFs ins Projekt kopiert:** `assets/mydata/cv/certificates/` (4 Dateien: Scrum Master I, Scrum Developer I, Scrum Product Owner I, Agile Leadership I) und in pubspec unter `assets:` registriert
+3. **`assets/mydata/cv/cv_data.yaml`**: Jedes Zertifikat mit verfügbarer PDF hat jetzt `pdf: "assets/mydata/cv/certificates/…"`; das appAkademie-Zertifikat hat einen Kommentar „keine PDF-Datei verfügbar"
+4. **`lib/models/cv_data.dart`**: `Certificate` um Feld `final String? pdfPath;` erweitert (inkl. Konstruktor + copyWith)
+5. **`lib/data/services/cv_data_parser.dart`**: YAML-Feld `pdf` wird nach `pdfPath` geparst
+6. **`lib/data/services/pdf/pdf_generator.dart`**
+   - Neue Methode `_loadCertificatePdfBytes(CvData)`: lädt alle hinterlegten Zertifikats-PDFs via `rootBundle`; fehlende Assets werden mit Warnung übersprungen (Generierung scheitert nicht)
+   - Speichern-Schritt: Sind Zertifikate vorhanden, werden sie via `PdfCombiner.mergeMultiplePDFs()` **an die Bewerbungs-PDF angehängt**; Logging: „($pageCount Seiten + N Zertifikat(e))"
+   - Fehlschlag des Merges → Bewerbung wird ohne Anhänge gespeichert (Graceful Degradation)
+
+**Wichtig zu wissen:**
+- `MergeInput` wird vom Haupt-Export von pdf_combiner **nicht re-exportiert** → eigener Import `package:pdf_combiner/models/merge_input.dart` nötig.
+
+## Bug Zertifikate, Teil 2
+
+Unter "assets/mydata/cv/Matthias_Struck_zertifikate.pdf" liegen alle Zertifikate, welche ebenfalls im generierten Dokument enthalten sein sollen. Dazu zählen ein Zertifikat von der AppAkademie, meine Zertifikate über das Bestehen der Kurse für den PSPO, PSM, PSD und PAL, aber auch Zeugnisse und dergleichen. Bisher scheinen einige der darin enthaltenen Dokumente im Original zu fehlen. Bitte einfügen.
+
+**Analyse der Sammel-PDF (16 Seiten):**
+
+| Seiten | Inhalt | Status |
+|--------|--------|--------|
+| 1 | appAkademie-Abschlusszertifikat „Moderne Anwendungsentwicklung" | **fehlte komplett** → jetzt extrahiert |
+| 2–5 | PSM I / PSD I / PSPO I / PAL I | Duplikate der bereits vorhandenen Einzelfiles → übersprungen |
+| 6–16 | 11 Seiten Arbeitszeugnisse (gescannt, ohne Textebene) | **fehlten komplett** → jetzt als Sammeldokument extrahiert |
+
+**Fix (implementiert):**
+
+1. **Extraktion aus der Sammel-PDF** (`OneDrive\Dokumente\CV\Matthias_Struck-Zertifikate.pdf`, via pypdf):
+   - `assets/mydata/cv/certificates/appAkademie_Abschlusszertifikat_Moderne_Anwendungsentwicklung.pdf` (Seite 1)
+   - `assets/mydata/cv/certificates/Zeugnisse_Matthias_Struck.pdf` (Seiten 6–16 als ein Dokument)
+   - Beide komprimiert (150 DPI / JPEG-Qualität 70% → appAkademie ~2 MB, Zeugnisse ~1,2 MB), damit die App-Größe klein bleibt
+2. **`assets/mydata/cv/cv_data.yaml`**: Das appAkademie-Zertifikat hat jetzt ebenfalls einen `pdf:`-Pfad (statt des bisherigen „keine PDF verfügbar"-Kommentars); neues YAML-Feld `attachments:` mit dem Zeugnisse-Dokument
+3. **`lib/models/cv_data.dart`**: `CvData` um Feld `final List<String> additionalAttachments;` erweitert (Konstruktor + toJson + fromJson + copyWith)
+4. **`lib/data/services/cv_data_parser.dart`**: Neues YAML-Feld `attachments:` (Liste von Pfad-Strings) wird nach `additionalAttachments` geparst; Logging zählt sie mit
+5. **`lib/data/services/pdf/pdf_generator.dart`**: `_loadCertificatePdfBytes()` lädt jetzt Zertifikats-PDFs **und** zusätzliche Anhänge; Reihenfolge im Export: Bewerbung → Zertifikate → Anhänge
+6. **`pubspec.yaml`**: Ordner `assets/mydata/cv/certificates/` registriert
+
+Ergebnis: Jede Bewerbungs-PDF enthält am Ende alle 5 Einzelzertifikate (inkl. appAkademie) plus das Zeugnisse-Dokument (11 Seiten).
+
 **Verifikation:**
+- Alle Tests bestanden, `dart analyze lib` ohne Fehler (nur vorbestehende Info-Lints)
+
+**Verifikation (frühere Fixes):**
 - 5 Unit-Tests für `CoverLetterSanitizer.isGarbage` in `test/services/ai/cover_letter_sanitizer_test.dart`
 - 4 Gemini-Tests angepasst/ergänzt: thinkingConfig mit `thinkingBudget` + erstem `maxOutputTokens`, neuer Retry-Test „erhöht Output-Budget bei MAX_TOKENS und liefert vollständige Antwort beim nächsten Versuch", Test „bricht bei finishReason MAX_TOKENS ab"
 - Alle 109 Tests bestanden, `dart analyze` ohne Issues.

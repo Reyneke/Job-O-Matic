@@ -117,11 +117,16 @@ class Certificate {
   final DateTime date;
   final String? certificateId;
 
+  /// Optionaler Asset-Pfad zur PDF-Datei des Zertifikats.
+  /// Diese wird beim PDF-Export der Bewerbung angehängt.
+  final String? pdfPath;
+
   const Certificate({
     required this.name,
     required this.issuer,
     required this.date,
     this.certificateId,
+    this.pdfPath,
   });
 
   Map<String, dynamic> toJson() => {
@@ -129,6 +134,7 @@ class Certificate {
         'issuer': issuer,
         'date': date.toIso8601String(),
         'certificateId': certificateId,
+        'pdfPath': pdfPath,
       };
 
   factory Certificate.fromJson(Map<String, dynamic> json) => Certificate(
@@ -136,6 +142,7 @@ class Certificate {
         issuer: json['issuer'] as String,
         date: DateTime.parse(json['date'] as String),
         certificateId: json['certificateId'] as String?,
+        pdfPath: json['pdfPath'] as String?,
       );
 }
 
@@ -168,12 +175,18 @@ class CvData {
   final List<Certificate> certificates;
   final List<Skill> skills;
 
+  /// Zusätzliche PDF-Anhänge (z.B. Arbeitszeugnisse), die beim
+  /// PDF-Export ans Ende der Bewerbung angehängt werden.
+  /// Pfade sind Asset-Pfade, gepflegt in cv_data.yaml unter `attachments`.
+  final List<String> additionalAttachments;
+
   const CvData({
     required this.personalData,
     this.workExperience = const [],
     this.education = const [],
     this.certificates = const [],
     this.skills = const [],
+    this.additionalAttachments = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -182,6 +195,7 @@ class CvData {
         'education': education.map((e) => e.toJson()).toList(),
         'certificates': certificates.map((e) => e.toJson()).toList(),
         'skills': skills.map((e) => e.toJson()).toList(),
+        'additionalAttachments': additionalAttachments,
       };
 
   factory CvData.fromJson(Map<String, dynamic> json) => CvData(
@@ -206,5 +220,10 @@ class CvData {
                 ?.map((e) => Skill.fromJson(e as Map<String, dynamic>))
                 .toList() ??
             [],
+        additionalAttachments:
+            (json['additionalAttachments'] as List<dynamic>?)
+                    ?.map((e) => e.toString())
+                    .toList() ??
+                [],
       );
 }

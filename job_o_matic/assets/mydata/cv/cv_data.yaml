@@ -140,18 +140,28 @@ certificates:
     issuer: "appAkademie"
     date: "2026-06-26"
     certificate_id: "26-07-04"
+    pdf: "assets/mydata/cv/certificates/appAkademie_Abschlusszertifikat_Moderne_Anwendungsentwicklung.pdf"
   - name: "Professional Scrum Master I"
     issuer: "Skilldrops Akademie"
     date: "2024-02-28"
+    pdf: "assets/mydata/cv/certificates/Professional_Scrum_Master_I.pdf"
   - name: "Professional Scrum Developer I"
     issuer: "Skilldrops Akademie"
     date: "2024-03-31"
+    pdf: "assets/mydata/cv/certificates/Professional_Scrum_Developer_I.pdf"
   - name: "Professional Scrum Product Owner I"
     issuer: "Skilldrops Akademie"
     date: "2024-04-30"
+    pdf: "assets/mydata/cv/certificates/Professional_Scrum_Product_Owner_I.pdf"
   - name: "Professional Agile Leader I"
     issuer: "Skilldrops Akademie"
     date: "2024-05-31"
+    pdf: "assets/mydata/cv/certificates/Professional_Agile_Leadership_I.pdf"
+
+# Zusätzliche Anhänge für den PDF-Export (z.B. Arbeitszeugnisse).
+# Wird am Ende der Bewerbungs-PDF nach den Zertifikaten angehängt.
+attachments:
+  - "assets/mydata/cv/certificates/Zeugnisse_Matthias_Struck.pdf"
 
 skills:
   # Programmiersprachen

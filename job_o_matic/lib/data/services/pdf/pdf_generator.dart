@@ -2,6 +2,9 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf_combiner/pdf_combiner.dart';
+// MergeInput wird vom Haupt-Export des Pakets nicht re-exportiert:
+import 'package:pdf_combiner/models/merge_input.dart';
 import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 import 'template_loader.dart';
@@ -147,10 +150,63 @@ class PdfGenerator {
     final filePath = '${directory.path}/$fileName';
 
     final file = File(filePath);
-    await file.writeAsBytes(await pdfDocument.save());
 
-    _log.info('PDF gespeichert: $filePath ($pageCount Seiten)');
+    // Zertifikats-PDFs laden (falls in der YAML hinterlegt).
+    final certificateBytes = await _loadCertificatePdfBytes(cvData);
+
+    if (certificateBytes.isEmpty) {
+      // Keine Zertifikate: Bewerbungs-PDF direkt speichern.
+      await file.writeAsBytes(await pdfDocument.save());
+      _log.info('PDF gespeichert: $filePath ($pageCount Seiten)');
+      return filePath;
+    }
+
+    // Mit Zertifikaten: Bewerbung + Zertifikats-PDFs zusammenführen.
+    try {
+      final inputs = <MergeInput>[
+        MergeInput.bytes(await pdfDocument.save()),
+        ...certificateBytes.map(MergeInput.bytes),
+      ];
+      await PdfCombiner.mergeMultiplePDFs(
+        inputs: inputs,
+        outputPath: filePath,
+      );
+      _log.info(
+        'PDF gespeichert: $filePath '
+        '($pageCount Seiten + ${certificateBytes.length} Zertifikat(se))',
+      );
+    } catch (e) {
+      _log.warning(
+        'Zusammenführen der Zertifikate fehlgeschlagen ($e) – '
+        'speichere Bewerbung ohne Anhänge.',
+      );
+      await file.writeAsBytes(await pdfDocument.save());
+    }
     return filePath;
+  }
+
+  /// Lädt die PDF-Bytes aller Anhänge für den PDF-Export:
+  /// Zertifikate mit hinterlegtem Asset-Pfad + zusätzliche Anhänge
+  /// (`attachments` in der YAML, z.B. Arbeitszeugnisse).
+  ///
+  /// Fehlende Assets werden übersprungen (mit Warnung), damit die
+  /// Generierung nicht an einer fehlenden Datei scheitert.
+  Future<List<Uint8List>> _loadCertificatePdfBytes(CvData cvData) async {
+    final paths = <String?>[
+      ...cvData.certificates.map((c) => c.pdfPath),
+      ...cvData.additionalAttachments,
+    ];
+    final result = <Uint8List>[];
+    for (final path in paths) {
+      if (path == null || path.trim().isEmpty) continue;
+      try {
+        final data = await rootBundle.load(path);
+        result.add(data.buffer.asUint8List());
+      } catch (e) {
+        _log.warning('Anhang-PDF nicht gefunden: $path ($e)');
+      }
+    }
+    return result;
   }
 
   /// Baut die persönliche Anrede für das Anschreiben.

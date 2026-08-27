@@ -18,8 +18,7 @@ class ApplicationListScreen extends ConsumerStatefulWidget {
       _ApplicationListScreenState();
 }
 
-class _ApplicationListScreenState
-    extends ConsumerState<ApplicationListScreen> {
+class _ApplicationListScreenState extends ConsumerState<ApplicationListScreen> {
   final Logger _log = Logger('ApplicationListScreen');
 
   @override
@@ -114,18 +113,95 @@ class _ApplicationListScreenState
   }
 
   void _retryApplication(int id) {
-    ref.read(jobRepositoryProvider).updateApplicationStatus(
-          id,
-          ApplicationStatus.queued,
-        );
+    ref
+        .read(jobRepositoryProvider)
+        .updateApplicationStatus(id, ApplicationStatus.queued);
     _log.info('Applikation $id: Neustart angefordert');
     setState(() {});
   }
 
+  /// Debug helper: pick individual applications and reset them to "queued".
+  void _requeueSingle() {
+    final repo = ref.read(jobRepositoryProvider);
+    final candidates = repo.applications
+        .where((a) => a.status != ApplicationStatus.queued)
+        .toList();
+
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Alle Bewerbungen sind bereits auf "wartend".'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final selected = <int>{};
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Einzelne auf "wartend"'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: candidates.length,
+              itemBuilder: (context, index) {
+                final app = candidates[index];
+                return CheckboxListTile(
+                  dense: true,
+                  value: selected.contains(app.id),
+                  onChanged: (checked) => setDialogState(() {
+                    if (checked == true) {
+                      selected.add(app.id);
+                    } else {
+                      selected.remove(app.id);
+                    }
+                  }),
+                  secondary: Text(
+                    app.status.displayName,
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                  title: Text(
+                    app.jobTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text('${app.company} · ID ${app.id}'),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton.icon(
+              onPressed: selected.isEmpty
+                  ? null
+                  : () {
+                      ref.read(jobRepositoryProvider).resetToQueued(selected);
+                      Navigator.pop(ctx);
+                    },
+              icon: const Icon(Icons.replay),
+              label: Text('Zurücksetzen (${selected.length})'),
+            ),
+          ],
+        ),
+      ),
+    ).then((_) {
+      if (mounted) setState(() {}); // Liste aktualisieren
+    });
+  }
+
   Future<void> _exportAll() async {
     final app = ref.read(jobRepositoryProvider);
-    final completed =
-        app.applications.where((a) => a.status == ApplicationStatus.completed).toList();
+    final completed = app.applications
+        .where((a) => a.status == ApplicationStatus.completed)
+        .toList();
 
     if (completed.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -140,7 +216,9 @@ class _ApplicationListScreenState
     _log.info('Batch-Export: ${completed.length} Bewerbungen');
 
     // Kopiere Dateien auf den Desktop des Benutzers
-    final desktopPath = Directory('${Platform.environment['USERPROFILE']}\\Desktop\\Job-O-Matic_Export');
+    final desktopPath = Directory(
+      '${Platform.environment['USERPROFILE']}\\Desktop\\Job-O-Matic_Export',
+    );
     final exportDir = Directory(desktopPath.path);
     if (!await exportDir.exists()) {
       await exportDir.create(recursive: true);
@@ -151,7 +229,8 @@ class _ApplicationListScreenState
       if (application.pdfPath != null) {
         final sourceFile = File(application.pdfPath!);
         if (await sourceFile.exists()) {
-          final targetPath = '${exportDir.path}\\Bewerbung_${_sanitizeFileName(application.company)}.pdf';
+          final targetPath =
+              '${exportDir.path}\\Bewerbung_${_sanitizeFileName(application.company)}.pdf';
           await sourceFile.copy(targetPath);
           copiedCount++;
 
@@ -177,7 +256,9 @@ class _ApplicationListScreenState
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$copiedCount Bewerbung(en) exportiert nach:\n${exportDir.path}'),
+        content: Text(
+          '$copiedCount Bewerbung(en) exportiert nach:\n${exportDir.path}',
+        ),
         backgroundColor: Colors.green,
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
@@ -208,12 +289,15 @@ class _ApplicationListScreenState
     final repo = ref.watch(jobRepositoryProvider);
     final applications = repo.applications;
     final total = applications.length;
-    final completed =
-        applications.where((a) => a.status == ApplicationStatus.completed).length;
-    final failed =
-        applications.where((a) => a.status == ApplicationStatus.failed).length;
-    final inProgress =
-        applications.where((a) => a.status == ApplicationStatus.processing).length;
+    final completed = applications
+        .where((a) => a.status == ApplicationStatus.completed)
+        .length;
+    final failed = applications
+        .where((a) => a.status == ApplicationStatus.failed)
+        .length;
+    final inProgress = applications
+        .where((a) => a.status == ApplicationStatus.processing)
+        .length;
 
     return Scaffold(
       appBar: AppBar(
@@ -251,11 +335,14 @@ class _ApplicationListScreenState
                 );
                 if (confirmed == true) {
                   await ref.read(jobRepositoryProvider).resetAllData();
-                  if (context.mounted) context.go('/'); // zurück zur Stelleneingabe
+                  if (context.mounted)
+                    context.go('/'); // zurück zur Stelleneingabe
                 }
               } else if (value == 'requeue') {
                 ref.read(jobRepositoryProvider).resetAllToQueued();
                 setState(() {});
+              } else if (value == 'requeueSingle') {
+                _requeueSingle();
               }
             },
             itemBuilder: (context) => [
@@ -267,15 +354,33 @@ class _ApplicationListScreenState
                   subtitle: Text('Zuletzt hinzugefügte bleiben'),
                 ),
               ),
+              const PopupMenuItem(
+                value: 'requeueSingle',
+                child: ListTile(
+                  leading: Icon(Icons.replay_circle_filled),
+                  title: Text('Einzelne auf "wartend"'),
+                  subtitle: Text(
+                    'Auswahl einzelner Bewerbungen',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                ),
+              ),
               const PopupMenuDivider(),
               PopupMenuItem(
                 value: 'reset',
                 child: ListTile(
-                  leading: Icon(Icons.delete_forever, color: theme.colorScheme.error),
-                  title: Text('DB zurücksetzen',
-                      style: TextStyle(color: theme.colorScheme.error)),
-                  subtitle: Text('Kompletter Reset',
-                      style: TextStyle(fontSize: 11)),
+                  leading: Icon(
+                    Icons.delete_forever,
+                    color: theme.colorScheme.error,
+                  ),
+                  title: Text(
+                    'DB zurücksetzen',
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+                  subtitle: Text(
+                    'Kompletter Reset',
+                    style: TextStyle(fontSize: 11),
+                  ),
                 ),
               ),
             ],
@@ -304,7 +409,8 @@ class _ApplicationListScreenState
                           const SizedBox(height: 8),
                           LinearProgressIndicator(
                             value: total > 0 ? completed / total : 0,
-                            backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                            backgroundColor:
+                                theme.colorScheme.surfaceContainerHighest,
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -328,11 +434,15 @@ class _ApplicationListScreenState
                 ),
                 const SizedBox(height: 12),
                 FilledButton.icon(
-                  onPressed: total > 0 && completed < total ? _generateAll : null,
+                  onPressed: total > 0 && completed < total
+                      ? _generateAll
+                      : null,
                   icon: const Icon(Icons.play_arrow),
-                  label: Text(completed > 0 && completed < total
-                      ? 'Restliche generieren'
-                      : 'Alle generieren'),
+                  label: Text(
+                    completed > 0 && completed < total
+                        ? 'Restliche generieren'
+                        : 'Alle generieren',
+                  ),
                 ),
               ],
             ),
@@ -345,9 +455,11 @@ class _ApplicationListScreenState
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.folder_open,
-                            size: 64,
-                            color: theme.colorScheme.onSurfaceVariant),
+                        Icon(
+                          Icons.folder_open,
+                          size: 64,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           'Keine Bewerbungen vorhanden.',
@@ -367,8 +479,7 @@ class _ApplicationListScreenState
                     itemCount: applications.length,
                     itemBuilder: (context, index) {
                       final app = applications[index];
-                      final isFailed =
-                          app.status == ApplicationStatus.failed;
+                      final isFailed = app.status == ApplicationStatus.failed;
                       final isCompleted =
                           app.status == ApplicationStatus.completed;
 
@@ -394,7 +505,9 @@ class _ApplicationListScreenState
 
                       return Card(
                         margin: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         child: ListTile(
                           leading: Icon(statusIcon, color: statusColor),
                           title: Text(app.jobTitle),
@@ -402,7 +515,8 @@ class _ApplicationListScreenState
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                  '${app.company} · ${app.status.displayName}'),
+                                '${app.company} · ${app.status.displayName}',
+                              ),
                               if (isFailed && app.errorMessage != null)
                                 Text(
                                   app.errorMessage!,

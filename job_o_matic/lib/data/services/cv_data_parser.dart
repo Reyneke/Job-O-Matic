@@ -259,6 +259,7 @@ class CvDataParser {
               issuer: issuer,
               date: date,
               certificateId: _stringField(cert, 'certificate_id'),
+              pdfPath: _stringField(cert, 'pdf'),
             ));
           }
         }
@@ -302,6 +303,17 @@ class CvDataParser {
         }
       }
 
+      // ── Zusätzliche Anhänge parsen (z.B. Zeugnisse) ─────────────
+      final additionalAttachments = <String>[];
+      if (data['attachments'] is List) {
+        for (final entry in data['attachments'] as List) {
+          final path = entry?.toString().trim() ?? '';
+          if (path.isNotEmpty) {
+            additionalAttachments.add(path);
+          }
+        }
+      }
+
       // ── Ergebnis ────────────────────────────────────────────────
       if (personalData == null || errors.isNotEmpty) {
         _log.warning(
@@ -314,6 +326,7 @@ class CvDataParser {
                   education: education,
                   certificates: certificates,
                   skills: skills,
+                  additionalAttachments: additionalAttachments,
                 )
               : null,
           errors: errors,
@@ -327,6 +340,7 @@ class CvDataParser {
         education: education,
         certificates: certificates,
         skills: skills,
+        additionalAttachments: additionalAttachments,
       );
 
       _log.info(
@@ -334,7 +348,8 @@ class CvDataParser {
         '${workExperience.length} Berufserfahrungen, '
         '${education.length} Ausbildungen, '
         '${certificates.length} Zertifikate, '
-        '${skills.length} Skills',
+        '${skills.length} Skills, '
+        '${additionalAttachments.length} zusätzliche Anhänge',
       );
 
       return CvParseResult(
