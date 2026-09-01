@@ -174,24 +174,29 @@ _Keine offenen Fragen mehr – alle Punkte sind geklärt, siehe „Entscheidunge
 
 Die Umsetzung erfolgt in **sechs Phasen** (angelehnt an `6-Datenbank-Persistenz.md`). Jede Phase endet mit einem lauffähigen, testbaren Zustand. Die Checkliste „Umsetzungsschritte“ oben wird hier in eine Reihenfolge mit Aufwandsschätzung überführt.
 
-### Phase A: Backend-Basis & Absender (1–2 Tage)
+### Phase A: Backend-Basis & Absender (1–2 Tage) ✅
 
-- [ ] **Gap 1 – Anhänge & CC/BCC verdrahten:** `MailDispatcher._sendEmail()` lädt die Anhänge (CV-PDF + Anschreiben-PDF **getrennt**) als `List<EmailAttachment>` und reicht sie an `EmailService.sendEmail(attachments:)` durch; `cc`/`bcc` in `EmailService.sendEmail()` und `MailQueueEntry` ergänzen
-- [ ] **Gap 3 – Absender umstellen:** Default in `EmailService` auf `kleitmiandefoot@gmail.com` (verifiziert) ersetzen; Absendername aus CV-Daten ableiten
-- [ ] **Reply-To setzen:** `EmailService.sendEmail()` um `replyTo` ergänzen – gleiche Adresse wie `sender` (Name aus CV-Daten),damit Rückantworten der Arbeitgeber im überwachten Postfach landen
-- [ ] **Brevo-Response korrekt parsen:** `messageId` aus dem JSON-Body extrahieren statt `response.body` komplett als `messageId` zu speichern (`email_service.dart`)
-- [ ] **Fehlerklassifikation:** HTTP 401 / 429 / 5xx unterscheiden – Grundlage für den „Als Entwurf exportieren“-Fallback
-- [ ] **Template mit Anhang-Hinweis:** E-Mail-Vorlage um einen kurzen Hinweissatz auf die Anhänge ergänzen (Body passt zu den tatsächlich angehängten Dateien: CV, Anschreiben)
+- [x] **Gap 1 – Anhänge & CC/BCC verdrahten:** `MailDispatcher._sendEmail()` lädt die Bewerbungs-PDF (`pdfPath`) als `List<EmailAttachment>` und reicht sie an `EmailService.sendEmail(attachments:)` durch; `cc`/`bcc`/`replyTo` in `EmailService.sendEmail()` und `MailQueueEntry` ergänzt – **MVP: kombinierte PDF** aus `pdfPath`; getrennte CV-/Anschreiben-PDFs folgen als eigenes Arbeitspaket (Umbau `PdfGenerator`)
+- [x] **Gap 3 – Absender umstellen:** Default in `EmailService` auf `kleitmiandefoot@gmail.com` (verifiziert) ersetzt (`defaultSenderEmail`/`defaultSenderName`); Absendername über `enqueueApplicationEmail(senderName:)` ableitbar
+- [x] **Reply-To setzen:** `EmailService.sendEmail()` setzt `replyTo` explizit – gleiche Adresse wie `sender` (Name aus CV-Daten),damit Rückantworten der Arbeitgeber im überwachten Postfach landen
+- [x] **Brevo-Response korrekt parsen:** `messageId` wird aus dem JSON-Body extrahiert statt `response.body` komplett als `messageId` zu speichern (`email_service.dart`)
+- [x] **Fehlerklassifikation:** `EmailFailure`-Enum (401 `unverifiedSender` / 429 `rateLimited` / 5xx `server` / Netzwerk `network`) – Grundlage für den „Als Entwurf exportieren“-Fallback
+- [x] **Template mit Anhang-Hinweis:** Standard-Body enthält bereits den Anhang-Hinweissatz („…finden Sie im Anhang dieser E-Mail“) – passt zur angehängten PDF
+- [x] **Nebenbei behobene Bugs in `MailQueueService.processQueue()`:** (a) Pending-Einträge wurden wegen invertierter Zustandsprüfung **nie versendet**; (b) `_updateEntry` suchte per Objekt-Identität und verlor nach `copyWith`-Updates den Index → Status-Updates gingen ins Leere. Beides durch die neuen Dispatcher-Tests aufgedeckt und gefixt
+- [x] **Tests:** `email_service_test.dart` (8 Tests: Payload/ReplyTo/CC/BCC/Anhang, Default-Absender, messageId-Parsing, 401/429/500/Netzwerk/Key fehlt) + `mail_dispatcher_test.dart` (3 Tests: Anhang+ReplyTo/CC/BCC-Send, fehlende PDF → failed, 401 → failed) – **alle 128 Tests der Suite grün**
 
-### Phase B: Versand-Zustand & Persistenz (2–3 Tage)
+### Phase B: Versand-Zustand & Persistenz (2–3 Tage) ✅
 
-- [ ] **Gap 4 – `emailStatus` an `Application`:** Enum `new`/`queued`/`sending`/`sent`/`failed` + Feld + `copyWith`/`toJson`/`fromJson` + Konverter (für die abgeleiteten UI-Zustände `ready`/`needs_address` ist kein Speicher nötig)
-- [ ] **Gap 5 + Audit-Log – DB-Migration auf Version 7:** `email_status`-Spalte an `applications`; Tabelle `sent_email_log` (CHECK `sent`/`failed`/`bounced`/`draft_exported`, UTC-Default `strftime('%Y-%m-%dT%H:%M:%fZ','now')`, Index `application_id, sent_at`); `_onCreate` mitziehen
-- [ ] **`SentEmailLogRepository`:** `insert` (ein Eintrag pro Versuch – auch `failed`/`draft_exported`, inkl. `error_message`), `latestPerApplication` (für „Zuletzt gesendet am“), `deleteOlderThan(6 Monate)` und `deleteByApplication`
-- [ ] **Queue-Persistenz:** `MailQueueService` an die bestehende `mail_queue`-Tabelle binden; offene `pending`-Einträge nach App-Start wieder anbieten (kein stiller Auto-Versand)
-- [ ] **Gap 2 – Dublettenschutz:** **History-Prüfung** gegen `sent_email_log` (bereits gesendet?) → bei Treffer **Bestätigungsdialog**; zusätzlich Dedup gegen offene `pending`-Queue-Einträge
-- [ ] **Retention:** Cleanup-Job beim App-Start löscht Log-Einträge > 6 Monate; Button „Verlauf löschen“ in den Einstellungen
-- [ ] **Persistenter Tageslimit-Zähler:** Datum + Zähler als Key-Value in `search_filters` (z. B. `mail_sent_date`, `mail_sent_count`, Reset bei neuem Tag) – Free-Tier-Limit 300/Tag gilt auch nach App-Neustart
+- [x] **Gap 4 – `emailStatus` an `Application`:** `EmailStatus`-Enum (`new`/`queued`/`sending`/`sent`/`failed`, `storeValue` + `fromStoreValue`) + Feld + `copyWith`/`toJson`/`fromJson` + DB-Konverter (`database_repository.dart`); `ready`/`needs_address` bleiben abgeleitete UI-Zustände (kein Speicher)
+- [x] **Gap 5 + Audit-Log – DB-Migration auf Version 7:** `email_status` (+ `email_address`) an `applications`; Tabelle `sent_email_log` (CHECK `sent`/`failed`/`bounced`/`draft_exported`, UTC-Default `strftime('%Y-%m-%dT%H:%M:%fZ','now')`, Index `application_id, sent_at`); `_onCreate` + `_onUpgrade` synchron
+- [x] **`SentEmailLogRepository`:** `insert` (ein Eintrag pro Versuch – auch `failed`/`draft_exported`, inkl. `error_message`), `latestSentAt` („Zuletzt gesendet am“), `hasSent` (History-Prüfung), `deleteOlderThan` (Retention), `deleteByApplication`, `deleteAll`
+- [x] **Queue-Persistenz:** `SqliteMailQueueStore` (Insert/Update/Status/Pending/Counter/Cleanup) an die `mail_queue`-Tabelle gebunden; `MailQueueService.requeuePendingEmails()` lädt offene `pending`/`queued` (+ abgelaufene `failed`) beim App-Start – **kein stiller Auto-Versand** (Nutzer bestätigt erneut)
+- [x] **Dublettenschutz-Basis:** `SentEmailLogRepository.hasSent()` liefert die History-Prüfung („bereits gesendet?“); der **Bestätigungsdialog** beim Wiederversand folgt in Phase D (UI)
+- [x] **Retention-Basis:** `deleteOlderThan(cutoff)` im Repository; Cleanup-Job beim App-Start + Button „Verlauf löschen“ folgen in Phase D/E (Einstellungen)
+- [x] **Persistenter Tageslimit-Zähler:** Datum + Zähler als Key-Value in `search_filters` (`mail_sent_date`/`mail_sent_count`, automatischer Reset bei neuem Tag) via `DatabaseRepository`; `MailDispatcher` prüft **300/Tag** vor dem Versand und erhöht den Zähler bei Erfolg
+- [x] **Tests (17 neue, Suite gesamt 145 grün):** `sent_email_log_repository_test.dart` (6: insert/UTC, MAX sent_at, hasSent, Retention, deleteByApplication, deleteAll), `database_repository_test.dart` (6: Tageslimit-Zähler inkl. Persistenz über neue Instanz, emailStatus-Roundtrip), `mail_queue_store_test.dart` (5: Roundtrip, updateStatus, loadPending-Filter, countByStatus, deleteAllCompleted) – alle gegen In-Memory-SQLite mit echter Schema-Definition (`createSchemaForTesting`)
+
+> **Hinweis zu Phase B:** Das DB-Schema (v7) enthält `bounced` im CHECK und im Enum, wird in Phase 1 aber noch **nicht** geschrieben (Entscheidung „Bounce-Erkennung“). Der `emailStatus` wird von `MailDispatcher` bisher nur im Queue-Lebenszyklus verfolgt; das Schreiben an die `applications`-Tabelle (State je Bewerbung) wird mit Phase D verdrahtet, sobald der Versand-Screen die Werte braucht.
 
 ### Phase C: E-Mail-Adress-Ermittlung (2 Tage)
 

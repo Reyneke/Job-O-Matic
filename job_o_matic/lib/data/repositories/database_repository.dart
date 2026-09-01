@@ -14,7 +14,7 @@ class DatabaseRepository {
   final DatabaseHelper _dbHelper;
 
   DatabaseRepository({DatabaseHelper? dbHelper})
-      : _dbHelper = dbHelper ?? DatabaseHelper();
+    : _dbHelper = dbHelper ?? DatabaseHelper();
 
   // ---------------------------------------------------------------------------
   // APPLICATIONS
@@ -23,10 +23,7 @@ class DatabaseRepository {
   /// Alle Bewerbungen laden (sortiert nach created_at DESC).
   Future<List<Application>> loadApplications() async {
     final db = await _dbHelper.database;
-    final rows = await db.query(
-      'applications',
-      orderBy: 'created_at DESC',
-    );
+    final rows = await db.query('applications', orderBy: 'created_at DESC');
     return rows.map(_rowToApplication).toList();
   }
 
@@ -70,6 +67,20 @@ class DatabaseRepository {
     _log.info('Application $id gelöscht');
   }
 
+  /// E-Mail-Versand-Status einer Bewerbung aktualisieren (DB).
+  Future<void> updateEmailStatus(int applicationId, EmailStatus status) async {
+    final db = await _dbHelper.database;
+    await db.update(
+      'applications',
+      {'email_status': status.storeValue},
+      where: 'id = ?',
+      whereArgs: [applicationId],
+    );
+    _log.fine(
+      'email_status für Application $applicationId → ${status.storeValue}',
+    );
+  }
+
   /// Prüfen, ob eine URL bereits in den letzten 90 Tagen verarbeitet wurde.
   Future<bool> isDuplicateUrl(String url) async {
     final db = await _dbHelper.database;
@@ -88,7 +99,8 @@ class DatabaseRepository {
 
   /// Alle Bewerbungen mit bestimmtem Status.
   Future<List<Application>> loadApplicationsByStatus(
-      ApplicationStatus status) async {
+    ApplicationStatus status,
+  ) async {
     final db = await _dbHelper.database;
     final rows = await db.query(
       'applications',
@@ -154,11 +166,10 @@ class DatabaseRepository {
   /// Suchfilter speichern (upsert).
   Future<void> saveFilter(String key, String value) async {
     final db = await _dbHelper.database;
-    await db.insert(
-      'search_filters',
-      {'key': key, 'value': value},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('search_filters', {
+      'key': key,
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Mehrere Filter auf einmal speichern.
@@ -166,13 +177,52 @@ class DatabaseRepository {
     final db = await _dbHelper.database;
     final batch = db.batch();
     for (final entry in filters.entries) {
-      batch.insert(
-        'search_filters',
-        {'key': entry.key, 'value': entry.value},
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      batch.insert('search_filters', {
+        'key': entry.key,
+        'value': entry.value,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
+  }
+
+  // ---------------------------------------------------------------------------
+  // MAIL DAILY LIMIT COUNTER (persistent, 300/Tag Free-Tier)
+  // ---------------------------------------------------------------------------
+  //
+  // Zählt die pro Kalendertag versendeten E-Mails in `search_filters`
+  // (Key-Value: `mail_sent_date` = ISO-Datum, `mail_sent_count` = Anzahl).
+  // Der Zähler überlebt den App-Neustart; bei neuem Tag wird er automatisch
+  // zurückgesetzt („Reset bei neuem Tag“ – doc/plan/14-Email.md Phase B).
+
+  static const String mailSentDateKey = 'mail_sent_date';
+  static const String mailSentCountKey = 'mail_sent_count';
+
+  /// Anzahl der heute bereits versendeten E-Mails.
+  Future<int> getMailCountForToday() async {
+    final today = _todayStamp();
+    final storedDate = await loadFilter(mailSentDateKey);
+    if (storedDate != today) return 0;
+    return int.tryParse(await loadFilter(mailSentCountKey) ?? '') ?? 0;
+  }
+
+  /// Erhöht den Tages-Zähler um 1 und gibt den neuen Stand zurück.
+  /// Setzt den Zähler automatisch auf 1 zurück, wenn ein neuer Tag begann.
+  Future<int> incrementMailCountForToday() async {
+    final today = _todayStamp();
+    final storedDate = await loadFilter(mailSentDateKey);
+    final count = storedDate == today
+        ? int.tryParse(await loadFilter(mailSentCountKey) ?? '') ?? 0
+        : 0;
+    await saveFilter(mailSentDateKey, today);
+    await saveFilter(mailSentCountKey, (count + 1).toString());
+    return count + 1;
+  }
+
+  String _todayStamp() {
+    final now = DateTime.now();
+    return '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
   }
 
   // ---------------------------------------------------------------------------
@@ -193,11 +243,7 @@ class DatabaseRepository {
   /// Aktuelle CV-Daten laden (neuesten Eintrag).
   Future<CvData?> loadCvData() async {
     final db = await _dbHelper.database;
-    final rows = await db.query(
-      'cv_data',
-      orderBy: 'id DESC',
-      limit: 1,
-    );
+    final rows = await db.query('cv_data', orderBy: 'id DESC', limit: 1);
     if (rows.isEmpty) return null;
     return _rowToCvData(rows.first);
   }
@@ -217,8 +263,10 @@ class DatabaseRepository {
   // ---------------------------------------------------------------------------
 
   /// Converts Application to DB row. Excludes `id` for INSERT (AUTOINCREMENT).
-  Map<String, dynamic> _applicationToRow(Application app,
-      {bool includeId = false}) {
+  Map<String, dynamic> _applicationToRow(
+    Application app, {
+    bool includeId = false,
+  }) {
     final row = <String, dynamic>{
       'job_title': app.jobTitle,
       'company': app.company,
@@ -231,6 +279,8 @@ class DatabaseRepository {
       'created_at': app.createdAt.toIso8601String(),
       'completed_at': app.completedAt?.toIso8601String(),
       'cover_letter_text': app.coverLetterText,
+      'email_status': app.emailStatus.storeValue,
+      'email_address': app.emailAddress,
     };
     if (includeId) {
       row['id'] = app.id;
@@ -243,54 +293,60 @@ class DatabaseRepository {
       _applicationToRow(app, includeId: true);
 
   Application _rowToApplication(Map<String, dynamic> row) => Application(
-        id: row['id'] as int,
-        jobTitle: row['job_title'] as String,
-        company: row['company'] as String,
-        companyAddress: row['company_address'] as String?,
-        jobUrl: row['job_url'] as String,
-        jobDescription: row['job_description'] as String?,
-        status: ApplicationStatus.values.firstWhere(
-          (e) => e.name == row['status'],
-          orElse: () => ApplicationStatus.queued,
-        ),
-        pdfPath: row['pdf_path'] as String?,
-        errorMessage: row['error_message'] as String?,
-        createdAt: DateTime.parse(row['created_at'] as String),
-        completedAt: row['completed_at'] != null
-            ? DateTime.parse(row['completed_at'] as String)
-            : null,
-        coverLetterText: row['cover_letter_text'] as String?,
-      );
+    id: row['id'] as int,
+    jobTitle: row['job_title'] as String,
+    company: row['company'] as String,
+    companyAddress: row['company_address'] as String?,
+    jobUrl: row['job_url'] as String,
+    jobDescription: row['job_description'] as String?,
+    status: ApplicationStatus.values.firstWhere(
+      (e) => e.name == row['status'],
+      orElse: () => ApplicationStatus.queued,
+    ),
+    pdfPath: row['pdf_path'] as String?,
+    errorMessage: row['error_message'] as String?,
+    createdAt: DateTime.parse(row['created_at'] as String),
+    completedAt: row['completed_at'] != null
+        ? DateTime.parse(row['completed_at'] as String)
+        : null,
+    coverLetterText: row['cover_letter_text'] as String?,
+    emailStatus: EmailStatus.fromStoreValue(
+      row['email_status'] as String? ?? EmailStatus.initial.storeValue,
+    ),
+    emailAddress: row['email_address'] as String?,
+  );
 
   Map<String, dynamic> _cvDataToRow(CvData cvData) => {
-        'personal_data_json': jsonEncode(cvData.personalData.toJson()),
-        'work_experience_json':
-            jsonEncode(cvData.workExperience.map((e) => e.toJson()).toList()),
-        'education_json':
-            jsonEncode(cvData.education.map((e) => e.toJson()).toList()),
-        'certificates_json':
-            jsonEncode(cvData.certificates.map((e) => e.toJson()).toList()),
-        'skills_json':
-            jsonEncode(cvData.skills.map((e) => e.toJson()).toList()),
-        'loaded_at': DateTime.now().toIso8601String(),
-      };
+    'personal_data_json': jsonEncode(cvData.personalData.toJson()),
+    'work_experience_json': jsonEncode(
+      cvData.workExperience.map((e) => e.toJson()).toList(),
+    ),
+    'education_json': jsonEncode(
+      cvData.education.map((e) => e.toJson()).toList(),
+    ),
+    'certificates_json': jsonEncode(
+      cvData.certificates.map((e) => e.toJson()).toList(),
+    ),
+    'skills_json': jsonEncode(cvData.skills.map((e) => e.toJson()).toList()),
+    'loaded_at': DateTime.now().toIso8601String(),
+  };
 
   CvData _rowToCvData(Map<String, dynamic> row) {
     return CvData(
       personalData: PersonalData.fromJson(
-          jsonDecode(row['personal_data_json'] as String)
-              as Map<String, dynamic>),
-      workExperience: (jsonDecode(row['work_experience_json'] as String)
-              as List<dynamic>)
-          .map((e) => WorkExperience.fromJson(e as Map<String, dynamic>))
-          .toList(),
+        jsonDecode(row['personal_data_json'] as String) as Map<String, dynamic>,
+      ),
+      workExperience:
+          (jsonDecode(row['work_experience_json'] as String) as List<dynamic>)
+              .map((e) => WorkExperience.fromJson(e as Map<String, dynamic>))
+              .toList(),
       education: (jsonDecode(row['education_json'] as String) as List<dynamic>)
           .map((e) => Education.fromJson(e as Map<String, dynamic>))
           .toList(),
       certificates: row['certificates_json'] != null
           ? (jsonDecode(row['certificates_json'] as String) as List<dynamic>)
-              .map((e) => Certificate.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map((e) => Certificate.fromJson(e as Map<String, dynamic>))
+                .toList()
           : [],
       skills: (jsonDecode(row['skills_json'] as String) as List<dynamic>)
           .map((e) => Skill.fromJson(e as Map<String, dynamic>))

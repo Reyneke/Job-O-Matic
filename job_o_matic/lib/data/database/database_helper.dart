@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -99,7 +100,7 @@ class DatabaseHelper {
 
     return openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -124,7 +125,10 @@ class DatabaseHelper {
         error_message    TEXT,
         created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
         completed_at     TEXT,
-        cover_letter_text TEXT
+        cover_letter_text TEXT,
+        email_status     TEXT    NOT NULL DEFAULT 'new'
+                          CHECK(email_status IN ('new','queued','sending','sent','failed')),
+        email_address    TEXT
       )
     ''');
 
@@ -176,6 +180,10 @@ class DatabaseHelper {
         body            TEXT    NOT NULL,
         pdf_path        TEXT,
         application_id  INTEGER,
+        sender_name     TEXT,
+        sender_email    TEXT,
+        cc              TEXT,
+        bcc             TEXT,
         status          TEXT    NOT NULL DEFAULT 'pending'
                         CHECK(status IN ('pending','queued','sending','sent','failed','bounced')),
         retry_count     INTEGER NOT NULL DEFAULT 0,
@@ -192,6 +200,25 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE INDEX idx_mail_queue_next_try ON mail_queue(next_try_at)
+    ''');
+
+    await db.execute('''
+      CREATE TABLE sent_email_log (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        application_id   INTEGER NOT NULL REFERENCES applications(id),
+        recipient_email  TEXT    NOT NULL,
+        subject          TEXT    NOT NULL,
+        message_id       TEXT,
+        status           TEXT    NOT NULL
+                         CHECK(status IN ('sent','failed','bounced','draft_exported')),
+        error_message    TEXT,
+        sent_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_sent_email_log_application_sent
+        ON sent_email_log(application_id, sent_at)
     ''');
 
     _log.info('Datenbank-Schema erfolgreich erstellt');
@@ -245,10 +272,51 @@ class DatabaseHelper {
       ''');
     }
     if (oldVersion < 6) {
-      _log.info(
-          'Migration auf Version 6: cover_letter_text-Spalte hinzufügen');
+      _log.info('Migration auf Version 6: cover_letter_text-Spalte hinzufügen');
       await db.execute('''
         ALTER TABLE applications ADD COLUMN cover_letter_text TEXT
+      ''');
+    }
+    if (oldVersion < 7) {
+      _log.info(
+        'Migration auf Version 7: email-Status/Persistenz (email_status, '
+        'email_address, sent_email_log, mail_queue-Erweiterung)',
+      );
+      await db.execute('''
+        ALTER TABLE applications ADD COLUMN email_status TEXT NOT NULL DEFAULT 'new'
+          CHECK(email_status IN ('new','queued','sending','sent','failed'))
+      ''');
+      await db.execute('''
+        ALTER TABLE applications ADD COLUMN email_address TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE mail_queue ADD COLUMN sender_name TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE mail_queue ADD COLUMN sender_email TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE mail_queue ADD COLUMN cc TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE mail_queue ADD COLUMN bcc TEXT
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sent_email_log (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          application_id   INTEGER NOT NULL REFERENCES applications(id),
+          recipient_email  TEXT    NOT NULL,
+          subject          TEXT    NOT NULL,
+          message_id       TEXT,
+          status           TEXT    NOT NULL
+                           CHECK(status IN ('sent','failed','bounced','draft_exported')),
+          error_message    TEXT,
+          sent_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+        )
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_sent_email_log_application_sent
+          ON sent_email_log(application_id, sent_at)
       ''');
     }
   }
@@ -272,10 +340,7 @@ class DatabaseHelper {
 
     final batch = db.batch();
     for (final entry in defaults.entries) {
-      batch.insert('search_filters', {
-        'key': entry.key,
-        'value': entry.value,
-      });
+      batch.insert('search_filters', {'key': entry.key, 'value': entry.value});
     }
     await batch.commit(noResult: true);
   }
@@ -298,4 +363,18 @@ class DatabaseHelper {
     await deleteDatabase(path);
     _log.info('Datenbank zurückgesetzt');
   }
+
+  /// Test-Seam: ersetzt die interne DB durch eine fremde Instanz
+  /// (z. B. In-Memory-SQLite via `sqflite_common_ffi` in Unit-Tests).
+  @visibleForTesting
+  void overrideDatabaseForTesting(Database db) {
+    _database = db;
+    _log.info('Datenbank für Tests überschrieben');
+  }
+
+  /// Test-Seam: legt das aktuelle Schema auf einer fremden DB-Instanz an
+  /// (für In-Memory-SQLite in Unit-Tests, damit Repository-Tests gegen die
+  /// echte Schema-Definition laufen statt einer Test-Kopie).
+  @visibleForTesting
+  Future<void> createSchemaForTesting(Database db) => _onCreate(db, 7);
 }

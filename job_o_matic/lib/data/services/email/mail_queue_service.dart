@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'package:logging/logging.dart';
 import 'package:uuid/uuid.dart';
+import 'mail_queue_store.dart';
 
 /// Status eines Mail-Queue-Eintrags.
 enum MailStatus {
@@ -44,6 +45,10 @@ class MailQueueEntry {
   final DateTime? nextTryAt;
   final int retryCount;
   final String? errorMessage;
+  final String? senderName;
+  final String? senderEmail;
+  final List<String> cc;
+  final List<String> bcc;
 
   const MailQueueEntry({
     required this.id,
@@ -58,6 +63,10 @@ class MailQueueEntry {
     this.nextTryAt,
     this.retryCount = 0,
     this.errorMessage,
+    this.senderName,
+    this.senderEmail,
+    this.cc = const [],
+    this.bcc = const [],
   });
 
   MailQueueEntry copyWith({
@@ -73,6 +82,10 @@ class MailQueueEntry {
     DateTime? nextTryAt,
     int? retryCount,
     String? errorMessage,
+    String? senderName,
+    String? senderEmail,
+    List<String>? cc,
+    List<String>? bcc,
   }) {
     return MailQueueEntry(
       id: id ?? this.id,
@@ -87,6 +100,10 @@ class MailQueueEntry {
       nextTryAt: nextTryAt ?? this.nextTryAt,
       retryCount: retryCount ?? this.retryCount,
       errorMessage: errorMessage ?? this.errorMessage,
+      senderName: senderName ?? this.senderName,
+      senderEmail: senderEmail ?? this.senderEmail,
+      cc: cc ?? this.cc,
+      bcc: bcc ?? this.bcc,
     );
   }
 }
@@ -110,6 +127,7 @@ class MailQueueService {
 
   final int _maxEmailsPerMinute;
   final int _maxRetries;
+  final MailQueueStore? _store;
 
   /// Callback für tatsächlichen E-Mail-Versand.
   Future<MailStatus> Function(MailQueueEntry entry)? onSendEmail;
@@ -117,17 +135,49 @@ class MailQueueService {
   MailQueueService({
     int maxEmailsPerMinute = 5,
     int maxRetries = 4,
-  })  : _maxEmailsPerMinute = maxEmailsPerMinute,
-        _maxRetries = maxRetries;
+    MailQueueStore? store,
+  }) : _maxEmailsPerMinute = maxEmailsPerMinute,
+       _maxRetries = maxRetries,
+       _store = store;
 
-  /// Fügt eine E-Mail zur Queue hinzu.
-  String enqueue({
+  /// Loads pending queue entries (`pending`/`queued`, or `failed` with
+  /// expired retry) from the store on app start.
+  ///
+  /// No silent auto-send — entries are surfaced in the send screen and the
+  /// user re-confirms dispatch (per doc/plan/14-Email.md §Fehlerbehandlung).
+  Future<void> requeuePendingEmails() async {
+    final store = _store;
+    if (store == null) return;
+    final pending = await store.loadPending();
+    if (pending.isEmpty) return;
+    for (final entry in pending) {
+      _allEntries.add(entry);
+      if (entry.status == MailStatus.pending ||
+          entry.status == MailStatus.queued) {
+        _queue.add(entry);
+      } else if (entry.status == MailStatus.failed &&
+          entry.nextTryAt != null &&
+          DateTime.now().isAfter(entry.nextTryAt!)) {
+        _queue.add(entry);
+      }
+    }
+    _log.info(
+      '${pending.length} pending queue entries reloaded after app start',
+    );
+  }
+
+  /// Fügt eine E-Mail zur Queue hinzu (persistiert, falls ein Store gesetzt ist).
+  Future<String> enqueue({
     required String to,
     required String subject,
     required String body,
     String? pdfPath,
     String? applicationId,
-  }) {
+    String? senderName,
+    String? senderEmail,
+    List<String>? cc,
+    List<String>? bcc,
+  }) async {
     final entry = MailQueueEntry(
       id: _uuid.v4(),
       to: to,
@@ -137,9 +187,17 @@ class MailQueueService {
       applicationId: applicationId,
       status: MailStatus.pending,
       createdAt: DateTime.now(),
+      senderName: senderName,
+      senderEmail: senderEmail,
+      cc: cc ?? const [],
+      bcc: bcc ?? const [],
     );
     _allEntries.add(entry);
     _queue.add(entry);
+    final store = _store;
+    if (store != null) {
+      await store.insert(entry);
+    }
     _log.info('E-Mail gequeued: $subject → $to (ID: ${entry.id})');
     return entry.id;
   }
@@ -156,11 +214,11 @@ class MailQueueService {
     while (_queue.isNotEmpty && _emailsSentInWindow < _maxEmailsPerMinute) {
       final entry = _queue.first;
 
-      // Prüfen, ob der Eintrag bereits gesendet werden darf
-      if (entry.status == MailStatus.pending ||
-          (entry.status == MailStatus.failed &&
-              entry.nextTryAt != null &&
-              DateTime.now().isBefore(entry.nextTryAt!))) {
+      // Nur fehlgeschlagene Einträge mit zukünftigem Retry überspringen.
+      // Pending-Einträge werden sofort versandt (Status-Übergang pending → sending).
+      if (entry.status == MailStatus.failed &&
+          entry.nextTryAt != null &&
+          DateTime.now().isBefore(entry.nextTryAt!)) {
         // Noch nicht bereit zum Senden
         break;
       }
@@ -200,7 +258,9 @@ class MailQueueService {
         retryCount: newRetryCount,
         errorMessage: errorMessage,
       );
-      _log.severe('E-Mail endgültig fehlgeschlagen: ${entry.id} ($errorMessage)');
+      _log.severe(
+        'E-Mail endgültig fehlgeschlagen: ${entry.id} ($errorMessage)',
+      );
     } else {
       // Retry mit Backoff
       final backoff = _calculateBackoff(newRetryCount);
@@ -242,12 +302,30 @@ class MailQueueService {
     DateTime? nextTryAt,
     String? errorMessage,
   }) {
-    final index = _allEntries.indexOf(entry);
+    // Per ID statt Objekt-Identität suchen – nach copyWith-Updates ist das
+    // Original-Objekt nicht mehr in der Liste (sonst gehen Status-Updates
+    // bei Retries ins Leere). Siehe doc/plan/14-Email.md Phase B (Gap fix).
+    final index = _allEntries.indexWhere((e) => e.id == entry.id);
     if (index >= 0) {
-      _allEntries[index] = entry.copyWith(
+      _allEntries[index] = _allEntries[index].copyWith(
         status: status,
         retryCount: retryCount,
         lastTryAt: lastTryAt ?? DateTime.now(),
+        nextTryAt: nextTryAt,
+        errorMessage: errorMessage,
+      );
+    }
+    // Persistenz: Status/Fehler/NextTryAt im Store aktualisieren, falls
+    // ein Store konfiguriert ist. (Vollständige Entry-Synchronisation
+    // läuft über `update`; hier reicht der Status-Teil für die Lifecycle-
+    // States.)
+    final store = _store;
+    if (store != null) {
+      store.updateStatus(
+        entry.id,
+        status ?? entry.status,
+        retryCount: retryCount ?? (status != null ? entry.retryCount : null),
+        lastTryAt: lastTryAt ?? (status != null ? DateTime.now() : null),
         nextTryAt: nextTryAt,
         errorMessage: errorMessage,
       );

@@ -19,8 +19,10 @@ import '../../data/services/pdf_cleanup_service.dart';
 import '../../data/services/email/email_service.dart';
 import '../../data/services/email/email_template_service.dart';
 import '../../data/services/email/mail_queue_service.dart';
+import '../../data/services/email/mail_queue_store.dart';
 import '../../data/services/email/circuit_breaker.dart';
 import '../../data/services/email/mail_dispatcher.dart';
+import '../../data/repositories/sent_email_log_repository.dart';
 import '../../data/services/ai/cover_letter_ai_service.dart';
 import '../../data/services/ai/fallback_cover_letter_ai_service.dart';
 import '../../data/services/ai/gemini_cover_letter_ai_service.dart';
@@ -178,8 +180,16 @@ final circuitBreakerProvider = Provider<CircuitBreaker>((ref) {
   return CircuitBreaker();
 });
 
+final sentEmailLogRepositoryProvider = Provider<SentEmailLogRepository>((ref) {
+  return SentEmailLogRepository(dbHelper: ref.read(databaseHelperProvider));
+});
+
 final mailQueueServiceProvider = Provider<MailQueueService>((ref) {
-  return MailQueueService();
+  // Phase B: Queue in SQLite persistieren (offene pending-Einträge überleben
+  // den App-Neustart; kein stiller Auto-Versand – siehe requeuePendingEmails).
+  return MailQueueService(
+    store: SqliteMailQueueStore(dbHelper: ref.read(databaseHelperProvider)),
+  );
 });
 
 final mailDispatcherProvider = Provider<MailDispatcher>((ref) {
@@ -188,6 +198,8 @@ final mailDispatcherProvider = Provider<MailDispatcher>((ref) {
     emailService: ref.read(emailServiceProvider),
     templateService: ref.read(emailTemplateServiceProvider),
     circuitBreaker: ref.read(circuitBreakerProvider),
+    sentEmailLogRepository: ref.read(sentEmailLogRepositoryProvider),
+    databaseRepository: ref.read(databaseRepositoryProvider),
   );
 });
 

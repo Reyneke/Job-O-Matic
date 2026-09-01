@@ -13,10 +13,7 @@ import 'router/app_router.dart';
 
 Future<void> main() async {
   // Initialize the logging system
-  AppLogger.init(
-    level: Level.ALL,
-    enableFileLogging: false,
-  );
+  AppLogger.init(level: Level.ALL, enableFileLogging: false);
 
   // Set intl locale BEFORE Widgets initialization (critical for DateFormat on desktop)
   Intl.defaultLocale = 'de_DE';
@@ -33,11 +30,7 @@ Future<void> main() async {
   // Load German locale data for intl package (required for DateFormat on desktop)
   await initializeDateFormatting('de_DE');
 
-  runApp(
-    const ProviderScope(
-      child: JobOMaticApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: JobOMaticApp()));
 }
 
 class JobOMaticApp extends ConsumerStatefulWidget {
@@ -66,13 +59,25 @@ class _JobOMaticAppState extends ConsumerState<JobOMaticApp> {
       final cleanupService = ref.read(pdfCleanupServiceProvider);
       final result = await cleanupService.cleanup();
       if (result.totalCleaned > 0) {
-        log.info('PDF-Cleanup: ${result.totalCleaned} verwaiste Dateien entfernt');
+        log.info(
+          'PDF-Cleanup: ${result.totalCleaned} verwaiste Dateien entfernt',
+        );
       }
     } catch (e) {
       log.warning('PDF-Cleanup fehlgeschlagen: $e');
     }
 
-    // 2. MailDispatcher starten (für Hintergrund-Queue-Verarbeitung)
+    // 2. MailQueueService: offene pending-Einträge nach App-Start wieder
+    //    anbieten (KEIN stiller Auto-Versand – der Nutzer bestätigt erneut,
+    //    siehe doc/plan/14-Email.md §Fehlerbehandlung)
+    try {
+      final queueService = ref.read(mailQueueServiceProvider);
+      await queueService.requeuePendingEmails();
+    } catch (e) {
+      log.warning('Requeue pending E-Mails fehlgeschlagen: $e');
+    }
+
+    // 3. MailDispatcher starten (für Hintergrund-Queue-Verarbeitung)
     try {
       final mailDispatcher = ref.read(mailDispatcherProvider);
       mailDispatcher.start();

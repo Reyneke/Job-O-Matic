@@ -15,15 +15,23 @@ class EmailService {
   final Logger _log = Logger('EmailService');
   final http.Client _client;
   final ApiKeyService _keyService;
+  final Future<String?> Function()? _apiKeyLoader;
 
   static const _baseUrl = 'api.brevo.com';
   static const _sendPath = '/v3/smtp/email';
 
+  /// Verifizierte Brevo-Absenderadresse (doc/plan/14-Email.md) – zugleich Antwortadresse.
+
+  static const String defaultSenderEmail = 'kleitmiandefoot@gmail.com';
+  static const String defaultSenderName = 'Job-O-Matic';
+
   EmailService({
     required ApiKeyService keyService,
     http.Client? client,
-  })  : _keyService = keyService,
-        _client = client ?? http.Client();
+    Future<String?> Function()? apiKeyLoader,
+  }) : _keyService = keyService,
+       _client = client ?? http.Client(),
+       _apiKeyLoader = apiKeyLoader;
 
   /// Sendet eine E-Mail über die Brevo-API.
   ///
@@ -40,21 +48,26 @@ class EmailService {
     String? senderName,
     String? senderEmail,
     List<EmailAttachment>? attachments,
+    String? replyToName,
+    String? replyToEmail,
+    List<String>? cc,
+    List<String>? bcc,
   }) async {
-    final apiKey = await _keyService.loadKey(ApiKeyService.brevoApiKey);
+    final apiKey = await _loadApiKey();
     if (apiKey == null || apiKey.isEmpty) {
       return EmailResult(
         success: false,
-        errorMessage: 'Brevo API-Key nicht konfiguriert. '
+        errorMessage:
+            'Brevo API-Key nicht konfiguriert. '
             'Bitte in den Einstellungen hinterlegen.',
       );
     }
 
+    final effectiveSenderName = senderName ?? defaultSenderName;
+    final effectiveSenderEmail = senderEmail ?? defaultSenderEmail;
+
     final payload = <String, dynamic>{
-      'sender': {
-        'name': senderName ?? 'Job-O-Matic',
-        'email': senderEmail ?? 'noreply@job-o-matic.local',
-      },
+      'sender': {'name': effectiveSenderName, 'email': effectiveSenderEmail},
       'to': [
         {'email': to},
       ],
@@ -62,35 +75,85 @@ class EmailService {
       'htmlContent': htmlContent,
     };
 
+    if (replyToEmail != null || replyToName != null) {
+      payload['replyTo'] = {
+        'name': replyToName ?? effectiveSenderName,
+        'email': replyToEmail ?? effectiveSenderEmail,
+      };
+    }
+    if (cc != null && cc.isNotEmpty) {
+      payload['cc'] = cc.map((e) => {'email': e}).toList();
+    }
+    if (bcc != null && bcc.isNotEmpty) {
+      payload['bcc'] = bcc.map((e) => {'email': e}).toList();
+    }
     if (attachments != null && attachments.isNotEmpty) {
-      payload['attachment'] = attachments.map((a) => {
-        'name': a.filename,
-        'content': base64Encode(a.bytes),
-      }).toList();
+      payload['attachment'] = attachments
+          .map((a) => {'name': a.filename, 'content': base64Encode(a.bytes)})
+          .toList();
     }
 
     final uri = Uri.https(_baseUrl, _sendPath);
-    final response = await _client.post(
-      uri,
-      headers: {
-        'api-key': apiKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: jsonEncode(payload),
-    );
+    http.Response response;
+    try {
+      response = await _client.post(
+        uri,
+        headers: {
+          'api-key': apiKey,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode(payload),
+      );
+    } catch (e) {
+      _log.severe('Netzwerkfehler beim E-Mail-Versand: $e');
+      return EmailResult(
+        success: false,
+        errorMessage: 'Netzwerkfehler: $e',
+        failure: EmailFailure.network,
+      );
+    }
 
     if (response.statusCode == 201 || response.statusCode == 200) {
-      _log.info('E-Mail erfolgreich gesendet an $to: $subject');
-      return EmailResult(success: true, messageId: response.body);
+      final messageId = _extractMessageId(response.body);
+      _log.info(
+        'E-Mail erfolgreich gesendet an $to: $subject (messageId: $messageId)',
+      );
+      return EmailResult(success: true, messageId: messageId);
     } else {
       final errorBody = response.body;
-      _log.severe('E-Mail-Versand fehlgeschlagen (HTTP ${response.statusCode}): $errorBody');
+      final failure = _classifyFailure(response.statusCode);
+      _log.severe(
+        'E-Mail-Versand fehlgeschlagen (HTTP ${response.statusCode}): $errorBody',
+      );
       return EmailResult(
         success: false,
         errorMessage: 'HTTP ${response.statusCode}: $errorBody',
+        failure: failure,
       );
     }
+  }
+
+  Future<String?> _loadApiKey() =>
+      _apiKeyLoader?.call() ?? _keyService.loadKey(ApiKeyService.brevoApiKey);
+
+  /// Extrahiert die messageId aus der Brevo-Response (JSON-Body).
+  String? _extractMessageId(String responseBody) {
+    try {
+      final decoded = jsonDecode(responseBody) as Map<String, dynamic>;
+      return decoded['messageId'] as String?;
+    } catch (_) {
+      _log.warning('Brevo-Response enthielt kein parsebares messageId-Format');
+      return null;
+    }
+  }
+
+  /// Klassifiziert einen Fehler-Statuscode der Brevo-API.
+  EmailFailure _classifyFailure(int statusCode) {
+    if (statusCode == 401) return EmailFailure.unverifiedSender;
+    if (statusCode == 429) return EmailFailure.rateLimited;
+    if (statusCode >= 500) return EmailFailure.server;
+    return EmailFailure.unknown;
   }
 
   /// Prüft, ob der Brevo-API-Key konfiguriert ist.
@@ -110,11 +173,33 @@ class EmailResult {
   final String? messageId;
   final String? errorMessage;
 
+  /// Klassifikation des Fehlers (null bei Erfolg).
+  final EmailFailure? failure;
+
   const EmailResult({
     required this.success,
     this.messageId,
     this.errorMessage,
+    this.failure,
   });
+}
+
+/// Klassifikation fehlgeschlagener Versuche – Grundlage für UI-Fallbacks.
+enum EmailFailure {
+  /// HTTP 401: Absender nicht verifiziert (→ „Als Entwurf exportieren“).
+  unverifiedSender,
+
+  /// HTTP 429: Tageslimit/Rate-Limit erreicht.
+  rateLimited,
+
+  /// HTTP 5xx: temporärer Brevo-Serverfehler.
+  server,
+
+  /// Netzwerk-/Timeout-Fehler.
+  network,
+
+  /// Sonstiger Fehler.
+  unknown,
 }
 
 /// Anhang für E-Mails.
@@ -122,8 +207,5 @@ class EmailAttachment {
   final String filename;
   final List<int> bytes;
 
-  const EmailAttachment({
-    required this.filename,
-    required this.bytes,
-  });
+  const EmailAttachment({required this.filename, required this.bytes});
 }
