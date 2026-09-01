@@ -12,6 +12,7 @@ import 'cover_page_generator.dart';
 import 'cover_letter_generator.dart';
 import 'cv_generator.dart';
 import 'pdf_utils.dart';
+import '../ai/cover_letter_sanitizer.dart';
 import '../../../models/application.dart';
 import '../../../models/cv_data.dart';
 
@@ -104,6 +105,14 @@ class PdfGenerator {
         'salutation': _buildSalutation(cvData.personalData),
         });
       }
+      // Wörtliche Zitate aus der Stellenbeschreibung entfernen – egal ob sie
+      // über das Template (`{{job_description_excerpt}}`) oder vom LLM
+      // (KI-Zitat der Anzeige) in den Text gelangt sind. Sie gehören nicht
+      // in ein Anschreiben (doc/plan/11-Probleme.md „Bug Anschreibengenerierung").
+      renderedLetter = CoverLetterSanitizer.removeJobDescriptionQuotes(
+        renderedLetter,
+        application.jobDescription,
+      );
       final letterPage = _coverLetterGenerator.build(
         personalData: cvData.personalData,
         renderedText: renderedLetter,

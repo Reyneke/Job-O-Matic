@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../data/repositories/job_repository.dart';
+import '../../data/services/ai/cover_letter_ai_service.dart';
 import '../../models/application.dart';
 
 /// Screen 3a: Detail view of a single application.
@@ -178,6 +179,16 @@ class ApplicationDetailScreen extends ConsumerWidget {
                         Text('Anschreiben',
                             style: theme.textTheme.titleMedium),
                         const Spacer(),
+                        // KI-Neugenerierung erzwingen – auch wenn bereits ein Text
+                        // persistiert ist (doc/plan/11-Probleme.md „Anfrage KI-generierung").
+                        if (repo.kiAnschreibenEnabled)
+
+                          TextButton.icon(
+                            onPressed: () =>
+                                _regenerateWithAi(context, repo, applicationId),
+                            icon: const Icon(Icons.auto_awesome, size: 18),
+                            label: const Text('Mit KI neu generieren'),
+                          ),
                         TextButton.icon(
                           onPressed: () => _editCoverLetter(
                             context,
@@ -221,9 +232,15 @@ class ApplicationDetailScreen extends ConsumerWidget {
                       )
                     else
                       Text(
-                        'Noch kein Anschreiben-Text gespeichert. Bei aktivierter '
-                        'KI-Funktion wird er bei der nächsten Generierung '
-                        'automatisch erstellt – oder hier manuell hinzufügen.',
+                        repo.kiAnschreibenEnabled
+                            ? 'Noch kein Anschreiben-Text gespeichert. Bei der nächsten '
+                                'Generierung wird die KI versucht; schlägt sie fehl, wird '
+                                'automatisch die Vorlage verwendet. Du kannst den Text hier '
+                                'auch manuell hinzufügen oder mit „Mit KI neu generieren" '
+                                'sofort von der KI erstellen lassen.'
+                            : 'Noch kein Anschreiben-Text gespeichert. Er wird bei der '
+                                'nächsten Generierung aus der Vorlage erzeugt – oder hier '
+                                'manuell hinzufügen.',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -450,6 +467,51 @@ class ApplicationDetailScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Erzwingt eine sofortige KI-Neugenerierung des Anschreiben-Textes und
+  /// zeigt das Ergebnis als Snackbar an.
+  ///
+  /// Nutzt [JobRepository.regenerateCoverLetterWithAi]. Der neue Text wird
+  /// in der DB gespeichert; die PDF muss anschließend erneut generiert
+  /// werden, damit die Änderung in der Datei landet.
+  Future<void> _regenerateWithAi(
+    BuildContext context,
+    JobRepository repo,
+    int applicationId,
+  ) async {
+    try {
+      await repo.regenerateCoverLetterWithAi(applicationId);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Anschreiben wurde neu von der KI generiert. '
+              'Bitte danach die PDF erneut generieren.',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } on CoverLetterAiException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('KI-Generierung fehlgeschlagen: ${e.message}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
   }
 
   /// Öffnet den Dialog zum Bearbeiten des Anschreiben-Texts und

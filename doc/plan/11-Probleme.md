@@ -331,6 +331,26 @@ Unter "assets/mydata/cv/Matthias_Struck_zertifikate.pdf" liegen alle Zertifikate
 
 Ergebnis: Jede Bewerbungs-PDF enthält am Ende alle 5 Einzelzertifikate (inkl. appAkademie) plus das Zeugnisse-Dokument (11 Seiten).
 
+## Bug Zertifikat AppAkademie
+
+Bei der Generierung ist das Zertifikat von der AppAkademie, das direkt nach dem Lebenslauf, sehr viel zu groß im Vergleich zu allen anderen Seiten des PDF. Muss das so sein?
+
+**Root Cause (gefunden):**
+
+Nein, das muss nicht so sein. Die extrahierte appAkademie-Seite hatte ein **Seitenformat von 3735 × 5286 pt** – das ist der **6,3-fache A4-Maßstab** (A4 = 595,3 × 841,9 pt), vermutlich ein hochauflösender Scan mit übernommener Pixelgröße als Seitenformat. Der `PdfCombiner`-Merge übernimmt die Seitengrößen der angehängten PDFs **unverändert** (kein Rescaling), deshalb erschien die Seite im Bewerbungs-PDF riesig.
+
+Zum Vergleich die übrigen Anhänge:
+- Scrum-/PAL-Zertifikate: 792 × 612 pt (US-Letter, **Querformat** – so kommen sie von Scrum.org, beabsichtigt und ok)
+- Zeugnisse: 596 × 842 pt (A4-Hochformat)
+
+**Fix (implementiert):**
+
+Die appAkademie-Seite wurde mit pypdf (`page.scale_by()`) auf **exakt A4-Hochformat (595,3 × 842,3 pt)** herunter skaliert (Faktor 0,1594). Die enthaltene Grafik bleibt in voller Auflösung erhalten – nur das Seitenformat wurde normalisiert, die Dateigröße bleibt ~1,95 MB. Keine Code-Änderung nötig; beim nächsten Generieren erscheint die Seite in einheitlicher Größe.
+
+**Verifikation:**
+- Neue Seitenmaße geprüft: 595,3 × 842,3 pt (A4), 1 Seite
+- Alle 109 Tests bestanden, `dart analyze lib` ohne Fehler (nur vorbestehende Info-Lints)
+
 **Verifikation:**
 - Alle Tests bestanden, `dart analyze lib` ohne Fehler (nur vorbestehende Info-Lints)
 
@@ -338,3 +358,81 @@ Ergebnis: Jede Bewerbungs-PDF enthält am Ende alle 5 Einzelzertifikate (inkl. a
 - 5 Unit-Tests für `CoverLetterSanitizer.isGarbage` in `test/services/ai/cover_letter_sanitizer_test.dart`
 - 4 Gemini-Tests angepasst/ergänzt: thinkingConfig mit `thinkingBudget` + erstem `maxOutputTokens`, neuer Retry-Test „erhöht Output-Budget bei MAX_TOKENS und liefert vollständige Antwort beim nächsten Versuch", Test „bricht bei finishReason MAX_TOKENS ab"
 - Alle 109 Tests bestanden, `dart analyze` ohne Issues.
+
+### Bug Anschreibengenerierung
+Ich habe festgestellt, dass in den generierten Anschreiben hin und wieder Texte auftauchen, die da nicht hingehören. Beispiel aus "/assets/mydata/1_Bliq.md":
+"(...)
+Sehr geehrte Damen und Herren,
+mit großem Interesse habe ich Ihre Stellenausschreibung für die Position als Senior Flutter Developer / Client Engineer, AI-Native and Rust-Friendly (m/f/d) bei der Bliq gelesen. With Bliq our vision is to build a Neo-OEM that is turning existing cars into driverless vehicles that can be used by everyone. Our company operates vertically integrated across hardware, software, electronics, operations to put driverless cars on real roads.
+(...)"
+Ein Teil des Absatzes sieht aus wie ein Teil dero originalen Jobbeschreibung. Woher kommt das? 
+**Root Cause (gefunden):**
+
+Das Anschreiben in `/assets/mydata/1_Bliq.pdf` stammt **nicht von der KI**, sondern von der **Template-Generierung** (`cover_letter_default.txt` → `TemplateRenderer` + `PdfGenerator`). Dieser Pfad wird genutzt, wenn die KI-Anschreiben deaktiviert sind oder alle Anbieter fehlschlagen (Template-Fallback).
+
+Das Template enthielt im ersten Absatz den Platzhalter `{{job_description_excerpt}}`:
+
+> „mit großem Interesse habe ich Ihre Stellenausschreibung für die Position als {{jobTitle}} bei der {{company}} gelesen. **{{job_description_excerpt}}**"
+
+`PdfGenerator._extractDescriptionExcerpt()` kopierte die **ersten zwei Sätze der gescrapten Stellenbeschreibung wörtlich** in den Brief. Bei Bliq begann die gescrapte Anzeige mit der (englischen) Firmen-Vorstellung „With Bliq our vision is to build a Neo-OEM …", daher landet dieses Marketing-Blau gerade im deutschen Anschreiben.
+
+Zusätzlicher Effekt (erklärt das „hin und wieder"): Auch die **KI-Generierung** bekommt die komplette Anzeige im Prompt (`<stellenanzeige>`-Block) – LLMs zitieren Anzeigen-Sätze gerne 1:1. Template-Pfad = deterministisch, KI-Antwort = variabel. Beide Wege wurden deshalb abgesichert.
+
+**Fix (implementiert):**
+
+1. **`assets/mydata/vorlagen/cover_letter_default.txt`** – `{{job_description_excerpt}}` aus dem ersten Absatz entfernt. Der Eröffnungssatz ist jetzt sauber und generisch; die Individualisierung übernimmt die KI.
+2. **`lib/data/services/pdf/template_loader.dart`** – Fallback-Template (`_defaultCoverLetterTemplate`) auf die neue, saubere Struktur umgestellt.
+3. **`lib/data/services/ai/cover_letter_sanitizer.dart`** – Neue statische Methode **`removeJobDescriptionQuotes(text, jobDescription)`**: verwirft jeden Satz, der **wörtlich** (normalisiert: lowercase, Leerraum zusammengefasst) in der Stellenbeschreibung vorkommt und länger als `minQuoteLength` (25 Zeichen) ist. Die Absatzstruktur (`\n\n`) bleibt erhalten – DIN-5008-konform.
+4. **`lib/data/services/pdf/pdf_generator.dart`** – Der finale Anschreiben-Text (KI **und** Template) wird vor dem Rendern durch `removeJobDescriptionQuotes` bereinigt. Dadurch werden auch **bereits persistierte**, alte Anschreiben beim nächsten PDF-Export bereinigt – ohne dass die DB geändert werden müsste.
+5. **`lib/data/repositories/job_repository.dart`** – `_ensureCoverLetterText()` bereinigt den KI-Text vor dem Speichern in der DB, damit Vorschau/Editor und PDF auf identischem, sauberem Text basieren.
+
+### Bug Zwischenfrage
+Auf dem Deckblatt taucht das Datum unten rechts auf. Ist das DIN ISO 5008 konform?
+
+**Antwort (Analyse):**
+
+Nein–doch: DIN 5008 unterscheidet zwei Aspekte:
+- **Format**: Yes — `TT.MM.JJJJ` (z.B. `31.08.2026`), numerisch mit Punkt und vierstelliger Jahreszahl, ist exakt die DIN-5008-Schreibweise.
+
+- **Position**: Regelt DIN 5008 nur **im Brief** (DIN 676: rechts oben auf Höhe des Empfängerblocks) — ein **Deckblatt ist kein Brief**, dafür gibt es keine Position-Vorgabe. Rechts unten ist gängige Praxis und zulässig. Das Projekt hat das Deckblatt-Datum bewusst auf `Alignment.centerRight` gestellt (siehe `12-DIN5008.md` Zeile 19/37–39).
+
+**Umsetzung (Option 2, auf Wunsch des Nutzers):**
+
+Die in DIN 5008 dokumentierte Orts-Schreibweise **„Ort, den TT.MM.JJJJ"** wird jetzt verwendet:
+1. **`lib/data/services/pdf/pdf_utils.dart`** – Neue statische Helperfunktion **`extractCityFromAddress(String? address)`**: extrahiert die Stadt aus der deutschen Adresse (Muster „…PLZ Ort", z.B. `Glacisweg 9,13583 Berlin` → `Berlin`; `null` bei fehlender PLZ).
+2. **`lib/data/services/pdf/cover_page_generator.dart`** – Datumszeile: `Datum: 31.08.2026` ersetzt durch **`Berlin, den 31.08.2026`** (Ort aus `personalData.address` abgeleitet; Fallback ohne Ortsangabe: nacktes Datum `31.08.2026`). Das `Datum:`-Label ist damit entfernt – reine DIN-5008-Schreibweise.- Rechtsbündig bleibt es weiterhin.
+
+**Verifikation:**
+- 3 neue Unit-Tests für `extractCityFromAddress` in `test/services/pdf/pdf_utils_test.dart`: „Glacisweg 9,13583 Berlin" → „Berlin"Musterstraße-Variante, nachgestelltes Komma; sowie `null` bei null/leer/ohne PLZ/PLZ-ohne-Ort.
+
+- **Verifikation (frühere Fixes):**
+- 6 neue Unit-Tests für `removeJobDescriptionQuotes`: wörtliche Zitate, beide Zitate (Template-Excerpt-Fall), eigene Formulierungen bleiben erhalten, kurze Allerwelts-Sätze trotz Treffer, Groß-/Kleinschreibung + Leerraum, leere/null-Stellenbeschreibung
+- Alle **115 Tests** bestanden, `dart analyze` (geänderte Dateien) ohne Issues.
+
+### Anfrage KI-generierung von ANschreiben
+Ich habe irgendwie das Gefühl, dass Anschreiben, trotz eingeschalteter Option, nicht immer von der KI generiert werden. Ist das so oder irre ich mich?
+
+**Antwort (Analyse): Berechtigter Verdacht – die Option heißt „KI wird versucht", nicht „KI wird garantiert verwendet".**
+
+Die Kette in `JobRepository.generatePdf()` → `_ensureCoverLetterText()` zeigt vier Fälle, in denen ein Anschreiben trotz eingeschalteter KI-Option **nicht** von der KI stammt:
+
+1. **Stiller Template-Fallback nach Fehlschlag (häufigster Fall):** Sind für alle drei Anbieter (Gemini → Mistral → Groq) keine gültigen API-Keys hinterlegt bzw. schlagen sie fehl (Kontingent, Netzwerk), wirft der `FallbackCoverLetterAiService` eine `CoverLetterAiException`. `_ensureCoverLetterText()` fängt sie ab und generiert **keinen Text** – die PDF wird still mit der Vorlage (`cover_letter_default.txt`) erzeugt. **Es gibt keinen UI-Hinweis**; nur ein Log-Warnung.
+
+2. **Schon vorhandener Text wird wiederverwendet („einmal pro Bewerbung"):** Existiert bereits ein gespeicherter, nicht als Müll erkannter `coverLetterText` (z. B. aus einer früheren Generierung oder manueller Bearbeitung), bricht `_ensureCoverLetterText()` ab – **die KI wird gar nicht erst gefragt**. Auch „Erneut generieren" ändert daran nichts, denn `resetToQueued()` löscht `coverLetterText` nicht.
+
+3. **Manuell bearbeitete Texte** werden absichtlich nie überschrieben (`_hasValidCoverLetterText` → beibehalten).
+
+4. **KI deaktiviert / Service null:** Ohne `ki_anschreiben`-Flag bzw. ohne injizierten Service wird immer die Vorlage verwendet.
+
+Ein gespeicherter Text ist außerdem **nicht zwingend ein KI-Text**: Vor der KI-Phase gab es die Spalte nicht (alte Bewerbungen → `null`), aber auch ein einmal von der KI erzeugter Text bleibt danach unverändert erhalten – selbst wenn die KI-Einstellung später geändert oder der Code korrigiert wird.
+
+**Unterscheidungsmerkmal in der Praxis:** KI-Briefe formulieren individuell pro Stelle (variieren stark); Vorlagen-Briefe sind fast wörtlich identisch und enthalten Sätze wie „Ich verfüge über {{experience_years}} Berufserfahrung…". Das Beispiel `/assets/mydata/1_Bliq.pdf` (mit dem englischen Bliq-Slogan) stammte aus dem Vorlagen-Pfad.
+
+**Fix (implementiert):**
+
+1. **`lib/data/repositories/job_repository.dart`** – Neue Methode **`regenerateCoverLetterWithAi(int applicationId)`**: erzwingt eine sofortige KI-Neugenerierung (Fallback-Kette + Quote-Bereinigung), überschreibt den persistierten Text in der DB und gibt den neuen Text zurück. Wirft `CoverLetterAiException`, wenn alle Anbieter scheitern oder die KI deaktiviert ist.
+2. **`lib/presentation/screens/application_detail_screen.dart`** – Neuer Button **„Mit KI neu generieren"** in der Anschreiben-Karte (sichtbar, wenn `kiAnschreibenEnabled`): befragt die KI sofort, speichert den Text und zeigt Erfolg/Fehler als Snackbar (mit Variantes falls kein Key o. Ä.). Zusätzlich transparenter Hint-Text, wenn noch kein Text existiert („wird die KI versucht; schlägt sie fehl, wird automatisch die Vorlage verwendet").
+3. **Hinweis für die Bedienung:** Nach dem Button muss die PDF neu generiert werden, damit der neue Text in der Datei landet.
+
+**Verifikation:**
+- `dart analyze` (geänderte Dateien) ohne Issues; vollständige Test-Suite läuft grün (117 Tests). Der Button ist standardmäßig verborgen (KI aus) – Widget-Tests unberührt.

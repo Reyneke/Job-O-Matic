@@ -77,15 +77,31 @@ class CoverPageGenerator {
         ),
         pw.SizedBox(height: 24),
 
-        // Datum (DIN 5008: rechtsbündig)
+        // Datum (DIN 5008: rechtsbündig, Schreibweise „Ort, den TT.MM.JJJJ")
         pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.Text(
-            'Datum: ${jobInfo['date']}',
+            _buildDateLabel(jobInfo['date'] as String?, personalData.address),
             style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey600),
           ),
         ),
       ],
     );
+  }
+
+  /// Baut die Datumszeile fürs Deckblatt:
+  ///
+  /// - Wenn der Ort aus der Adresse ableitbar ist: „Berlin, den 31.08.2026"
+  ///   (DIN-5008-Dokumentierte Schreibweise „Ort, den TT.MM.JJJJ").
+  /// - Sonst das nackte Datum „31.08.2026“ (ohne „Datum:“-Label),
+  ///   ebenfalls DIN-5008-konform.
+
+  static String _buildDateLabel(String? date, String? address) {
+    final dateText = date ?? '';
+    final city = PdfUtils.extractCityFromAddress(address);
+    if (city != null && city.isNotEmpty) {
+      return '$city, den $dateText';
+    }
+    return dateText;
   }
 }

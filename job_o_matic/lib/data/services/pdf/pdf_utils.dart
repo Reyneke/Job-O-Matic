@@ -24,6 +24,25 @@ class PdfUtils {
   /// Monat/Jahr: MM.JJJJ (z.B. "08.2026")
   static final DateFormat dateFormatMonthYear = DateFormat('MM.yyyy');
 
+  /// Extrahiert den Ort (Stadt) aus einer deutschen Adresse.
+
+  /// Beispiel: "Glacisweg 9,13583 Berlin" → "Berlin".
+  ///
+  /// Erwartet das Muster „…PLZ(5 Ziffern) Ort". Wird keine PLZ gefunden,
+  /// wird `null` zurückgegeben – der Aufrufer kann dann auf eine
+  /// DIN-5008-konforme Datums-Schreibweise ohne Ortsangabe fallbacken.
+
+  static String? extractCityFromAddress(String? address) {
+    if (address == null || address.trim().isEmpty) return null;
+    final trimmed = address.trim();
+    final match = RegExp(r'\d{5}\s+(.+)$').firstMatch(trimmed);
+    if (match == null) return null;
+    final city = match.group(1)!.trim();
+    if (city.isEmpty) return null;
+    // Nachgestellte Satzzeichen/Beistriche entfernen (z.B. "13583 Berlin,"]).
+    return city.replaceFirst(RegExp(r'[,;]\s*$'), '').trim();
+  }
+
   /// Primärfarbe (entspricht AppTheme seed color red).
   static const primaryColor = PdfColors.red700;
 

@@ -14,6 +14,14 @@ class CoverLetterSanitizer {
   /// Maximale Anzahl von Absätzen im fertigen Anschreiben.
   static const int maxParagraphs = 6;
 
+  /// Mindestlänge eines Satzes (normalisiert), ab der ein wörtliches Zitat
+  /// aus der Stellenbeschreibung erkannt wird.
+  ///
+  /// Kürzere Allerwelts-Sätze (z. B. „Gerne." oder „Vielen Dank.") können
+  /// leicht zufällig wortgleich in einer Anzeige stehen und sollen nicht
+  /// entfernt werden.
+  static const int minQuoteLength = 25;
+
   /// Bereinigt den Rohtext des LLM und liefert reinen Fließtext zurück.
   ///
   /// Gibt einen leeren String zurück, wenn nichts Brauchbares übrig bleibt.
@@ -65,6 +73,60 @@ class CoverLetterSanitizer {
 
     return limited.join('\n\n');
   }
+
+  /// Entfernt Sätze, die wörtlich (1:1) aus der Stellenbeschreibung
+  /// übernommen wurden.
+  ///
+  /// Hintergrund (doc/plan/11-Probleme.md „Bug Anschreibengenerierung"):
+  /// - Die Template-Individualisierung `{{job_description_excerpt}}` hat die
+  ///   ersten beiden Sätze der gescrapten Anzeige direkt in den Brief
+  ///   kopiert (z. B. die englische Firmen-Vorstellung bei Bliq).
+  /// - LLMs zitieren außerdem gerne Anzeigen-Sätze im Originalwortlaut.
+  /// Beides erzeugt im Anschreiben Sätze, die dort nicht hingehören.
+  ///
+  /// Funktionsweise: Ein Satz des Anschreibens wird verworfen, wenn er
+  /// (normalisiert: lowercase, Leerraum zusammengefasst) wörtlich in der
+  /// Stellenbeschreibung vorkommt und lang genug ist ([minQuoteLength]).
+  /// Die Absatzstruktur (`\n\n`) bleibt erhalten, damit DIN-5008-Absätze
+  /// beim Bereinigen nicht zerstört werden.
+  static String removeJobDescriptionQuotes(
+    String text,
+    String? jobDescription,
+  ) {
+    if (jobDescription == null || jobDescription.trim().isEmpty) return text;
+    final description = _normalizeForMatch(jobDescription);
+
+    final paragraphs = text.split(RegExp(r'\n\s*\n'));
+    final cleaned = <String>[];
+    for (final paragraph in paragraphs) {
+      final sentences = paragraph
+          .split(RegExp(r'(?<=[.!?])\s+'))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      final kept = <String>[];
+      for (final sentence in sentences) {
+        final normalized = _normalizeForMatch(sentence);
+        if (normalized.length >= minQuoteLength &&
+            description.contains(normalized)) {
+          // Wörtlich aus der Stellenbeschreibung übernommen → verwerfen.
+          continue;
+        }
+        kept.add(sentence);
+      }
+      if (kept.isNotEmpty) {
+        cleaned.add(kept.join(' '));
+      }
+    }
+    return cleaned.join('\n\n');
+  }
+
+  /// Normalisiert Text für den Wortlaut-Vergleich:
+  /// lowercase und Leerraum auf ein einzelnes Leerzeichen zusammengefasst.
+  static String _normalizeForMatch(String input) => input
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   /// Entfernt Emojis und ähnliche Symbolzeichen.
   static String _stripEmoji(String input) => input

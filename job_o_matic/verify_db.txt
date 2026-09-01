@@ -1,0 +1,15 @@
+===
+ANALYZE
+===
+   info - presentation\screens\application_list_screen.dart:339:21 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - presentation\screens\job_search_screen.dart:82:30 - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check. Guard a 'State.context' use with a 'mounted' check on the State, and other BuildContext use with a 'mounted' check on the BuildContext. - use_build_context_synchronously
+   info - presentation\screens\job_search_screen.dart:97:28 - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check. Guard a 'State.context' use with a 'mounted' check on the State, and other BuildContext use with a 'mounted' check on the BuildContext. - use_build_context_synchronously
+
+23 issues found.
+===
+TEST
+===
+00:12 +106: C:/Users/matth/dev/Job-O-Matic/job_o_matic/test/services/pdf_utils_test.dart: PdfUtils - DIN 5008 Konformität buildFooter zeigt "Seite X von Y" ab Seite 2
+00:14 +107: C:/Users/matth/dev/Job-O-Matic/job_o_matic/test/widget_test.dart: App loads and shows Job Input Screen
+00:16 +108: C:/Users/matth/dev/Job-O-Matic/job_o_matic/test/widget_test.dart: App shows search and continue buttons
+00:16 +109: All tests passed!

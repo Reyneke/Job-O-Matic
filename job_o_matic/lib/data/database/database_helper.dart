@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:logging/logging.dart';
 
 /// Singleton zur Verwaltung der SQLite-Datenbank.
@@ -16,10 +17,52 @@ class DatabaseHelper {
 
   DatabaseHelper._internal();
 
+  /// Cache für den aufgelösten DB-Pfad (muss nur einmal ermittelt werden).
+  static String? _databasesPath;
+
   /// Singleton-Instanz
   factory DatabaseHelper() {
     _instance ??= DatabaseHelper._internal();
     return _instance!;
+  }
+
+  /// Löst den dauerhaften Speicherort der Datenbank auf.
+  ///
+  /// Die DB liegt unter `<ApplicationSupportDirectory>/databases/`
+  /// (unter Windows: `%APPDATA%\<org>\<app>\databases\`) und **nicht** im
+  /// sqflite-ffi-Standard (`.dart_tool/sqflite_common_ffi/databases/`),
+  /// da `.dart_tool` ein Cache-Ordner ist und z. B. von `flutter clean`
+  /// komplett gelöscht wird – mit allen enthaltenen Daten.
+  ///
+  /// Migration: Existiert noch eine alte DB im Legacy-Pfad und noch keine
+  /// am neuen Ort, wird sie einmalig dorthin kopiert.
+  Future<String> _resolveDatabasesPath() async {
+    final cached = _databasesPath;
+    if (cached != null) return cached;
+
+    final appDir = await getApplicationSupportDirectory();
+    final dbDir = p.join(appDir.path, 'databases');
+    await Directory(dbDir).create(recursive: true);
+
+    // Einmalige Migration vom Legacy-Pfad (.dart_tool), falls vorhanden.
+    final legacyPath = p.join(await getDatabasesPath(), 'job_o_matic.db');
+    final newPath = p.join(dbDir, 'job_o_matic.db');
+    final legacyFile = File(legacyPath);
+    final newFile = File(newPath);
+    if (await legacyFile.exists() && !await newFile.exists()) {
+      await legacyFile.copy(newPath);
+      // WAL/SHM mitnehmen, falls vorhanden (unbeschriebene Transaktionen).
+      for (final suffix in ['-wal', '-shm']) {
+        final side = File('$legacyPath$suffix');
+        if (await side.exists()) {
+          await side.copy('$newPath$suffix');
+        }
+      }
+      _log.info('Datenbank vom Legacy-Pfad migriert: $legacyPath -> $newPath');
+    }
+
+    _databasesPath = dbDir;
+    return dbDir;
   }
 
   /// Öffnet (oder erstellt) die Datenbank. Idempotent.
@@ -32,7 +75,7 @@ class DatabaseHelper {
   /// Löscht die bestehende Datenbank (für Entwicklung/Reset).
   Future<void> deleteDatabaseFile() async {
     await close();
-    final dbPath = await getDatabasesPath();
+    final dbPath = await _resolveDatabasesPath();
     final path = p.join(dbPath, 'job_o_matic.db');
     final file = File(path);
     if (await file.exists()) {
@@ -49,7 +92,7 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
+    final dbPath = await _resolveDatabasesPath();
     final path = p.join(dbPath, 'job_o_matic.db');
 
     _log.info('Öffne Datenbank: $path');
@@ -250,7 +293,7 @@ class DatabaseHelper {
   /// Setzt die Datenbank zurück (für Tests).
   Future<void> reset() async {
     await close();
-    final dbPath = await getDatabasesPath();
+    final dbPath = await _resolveDatabasesPath();
     final path = p.join(dbPath, 'job_o_matic.db');
     await deleteDatabase(path);
     _log.info('Datenbank zurückgesetzt');

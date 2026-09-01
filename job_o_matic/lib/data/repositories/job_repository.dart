@@ -386,7 +386,14 @@ class JobRepository extends ChangeNotifier {
         cvData: cvData,
         application: app,
       );
-      await saveCoverLetterText(applicationId, text);
+      // Wörtliche Zitate aus der Stellenbeschreibung entfernen (LLMs
+      // übernehmen Anzeigen-/Firmen-Sätze gerne 1:1) – sie gehören nicht in
+      // ein Anschreiben (doc/plan/11-Probleme.md „Bug Anschreibengenerierung").
+      final cleaned = CoverLetterSanitizer.removeJobDescriptionQuotes(
+        text,
+        app.jobDescription,
+      );
+      await saveCoverLetterText(applicationId, cleaned);
     } on CoverLetterAiException catch (e) {
       // Bewusster Template-Fallback statt Abbruch
       _log.warning(
@@ -396,6 +403,58 @@ class JobRepository extends ChangeNotifier {
     } catch (e) {
       _log.severe('Unerwarteter Fehler bei der KI-Generierung: $e');
     }
+  }
+
+  /// Erzwingt eine sofortige KI-Neugenerierung des Anschreiben-Textes
+  /// für eine Bewerbung – unabhängig davon, ob bereits ein Text persistiert
+  /// ist.
+  ///
+  /// Nutzt dieselbe Fallback-Kette und dieselbe Bereinigung wie die
+  /// automatische Generierung. Der neue Text wird in der DB gespeichert
+  /// (via [saveCoverLetterText]). Wirft [CoverLetterAiException], wenn alle
+  /// Anbieter fehlschlagen oder die KI deaktiviert ist.
+  ///
+  /// Hintergrund (doc/plan/11-Probleme.md „Anfrage KI-generierung"):
+  /// Die Option „KI-Anschreiben" bedeutet „KI wird versucht", nicht„garantiert
+  /// verwendet". Ein bereits gespeicherter Text wird bei der normalen Generierung
+  /// bewusst wiederverwendet („einmal pro Bewerbung"). Mit dieser Methode
+  /// kann der Nutzer die KI gezielt neu befragen – z.B. nach dem Anlegen
+  /// eines API-Keys oder bei inzwischen korrigiertem Code.
+
+  Future<String> regenerateCoverLetterWithAi(int applicationId) async {
+    final app = getApplication(applicationId);
+    if (app == null) {
+      throw Exception('Application $applicationId nicht gefunden');
+    }
+    if (!_kiAnschreibenEnabled) {
+      throw const CoverLetterAiException(
+        'KI-Anschreiben ist deaktiviert. Bitte aktivieren Sie es in den '
+        'Einstellungen (API-Keys.).',
+      );
+    }
+    if (_coverLetterAiService == null) {
+      throw const CoverLetterAiException('Kein KI-Anschreiben-Service verfügbar.');
+    }
+    // CV-Daten sicherstellen (wie generatePdf()).
+    await _ensureCvDataLoaded();
+    final cvData = _cvData;
+    if (cvData == null) {
+      throw Exception('CV-Daten konnten nicht geladen werden');
+    }
+
+    _log.info('Erzwinge KI-Neugenerierung für Application $applicationId…');
+    final text = await _coverLetterAiService.generateCoverLetter(
+      cvData: cvData,
+      application: app,
+    );
+    // Wörtliche Zitate aus der Stellenbeschreibung entfernen (dieselbe
+    // Bereinigung wie bei der automatischen Generierung).
+    final cleaned = CoverLetterSanitizer.removeJobDescriptionQuotes(
+      text,
+      app.jobDescription,
+    );
+    await saveCoverLetterText(applicationId, cleaned);
+    return cleaned;
   }
 
   /// Liefert true, wenn der Anschreiben-Text vorhanden und plausibel ist

@@ -149,4 +149,126 @@ void main() {
       expect(CoverLetterSanitizer.isGarbage(validLetter), isFalse);
     });
   });
+
+  group('CoverLetterSanitizer.removeJobDescriptionQuotes', () {
+    const jobDescription =
+        'With Bliq our vision is to build a Neo-OEM that is turning existing '
+        'cars into driverless vehicles that can be used by everyone. '
+        'Our company operates vertically integrated across hardware, software, '
+        'electronics, operations to put driverless cars on real roads. '
+        'Viel Erfolg!';
+
+    test('entfernt wörtlich übernommene Anzeigen-Sätze', () {
+      const letter =
+          'Sehr geehrte Damen und Herren,\n\n'
+          'mit großem Interesse habe ich Ihre Stellenausschreibung für die '
+          'Position als Flutter Developer bei der Bliq gelesen. With Bliq our '
+          'vision is to build a Neo-OEM that is turning existing cars into '
+          'driverless vehicles that can be used by everyone.\n\n'
+          'Mit freundlichen Grüßen\nMatthias Struck';
+
+      final result =
+          CoverLetterSanitizer.removeJobDescriptionQuotes(letter, jobDescription);
+
+      expect(result, isNot(contains('With Bliq our vision')));
+      expect(
+        result,
+        contains('mit großem Interesse habe ich Ihre Stellenausschreibung'),
+      );
+      expect(result, contains('Mit freundlichen Grüßen'));
+    });
+
+    test('entfernt beide wörtlich zitierten Sätze (Template-Excerpt-Fall)', () {
+      const letter =
+          'Sehr geehrte Damen und Herren,\n\n'
+          'mit großem Interesse habe ich Ihre Stellenausschreibung für die '
+          'Position als Flutter Developer bei der Bliq gelesen. With Bliq our '
+          'vision is to build a Neo-OEM that is turning existing cars into '
+          'driverless vehicles that can be used by everyone. Our company '
+          'operates vertically integrated across hardware, software, '
+          'electronics, operations to put driverless cars on real roads.\n\n'
+          'Ich freue mich auf Ihre Rückmeldung.\n\n'
+          'Mit freundlichen Grüßen\nMatthias Struck';
+
+      final result =
+          CoverLetterSanitizer.removeJobDescriptionQuotes(letter, jobDescription);
+
+      expect(result, isNot(contains('With Bliq our vision')));
+      expect(result, isNot(contains('Our company operates')));
+      expect(
+        result,
+        'Sehr geehrte Damen und Herren,\n\n'
+        'mit großem Interesse habe ich Ihre Stellenausschreibung für die '
+        'Position als Flutter Developer bei der Bliq gelesen.\n\n'
+        'Ich freue mich auf Ihre Rückmeldung.\n\n'
+        'Mit freundlichen Grüßen\nMatthias Struck',
+      );
+    });
+
+    test('behält eigene Formulierungen, die nicht in der Anzeige stehen', () {
+      const letter =
+          'Sehr geehrte Damen und Herren,\n\n'
+          'Als Diplom-Ingenieur mit über 12 Jahren Erfahrung in der '
+          'Embedded-Entwicklung bringe ich genau das Profil mit, das Sie '
+          'suchen.\n\n'
+          'Mit freundlichen Grüßen\nMatthias Struck';
+
+      final result =
+          CoverLetterSanitizer.removeJobDescriptionQuotes(letter, jobDescription);
+
+      expect(result, letter);
+    });
+
+    test('entfernt keine kurzen Allerwelts-Sätze trotz Treffer in der Anzeige',
+        () {
+      const letter =
+          'Sehr geehrte Damen und Herren,\n\n'
+          'Viel Erfolg!\n\n'
+          'Mit freundlichen Grüßen\nMatthias Struck';
+
+      // "Viel Erfolg!" steht wörtlich in der Anzeige, ist aber mit 11 Zeichen
+      // weit unter minQuoteLength → bleibt erhalten.
+      final result =
+          CoverLetterSanitizer.removeJobDescriptionQuotes(letter, jobDescription);
+
+      expect(result, contains('Viel Erfolg!'));
+      expect(result, contains('Mit freundlichen Grüßen'));
+    });
+
+    test('ignoriert Groß-/Kleinschreibung und unterschiedlichen Leerraum', () {
+      const letter =
+          'Sehr geehrte Damen und Herren,\n\n'
+          'mit großem Interesse habe ich Ihre Stellenausschreibung gelesen. '
+          'with  bliQ OUR vision is to   build a Neo-OEM that is turning '
+          'existing cars into driverless  vehicles that can be used by '
+          'everyone.\n\n'
+          'Mit freundlichen Grüßen\nMatthias Struck';
+
+      final result =
+          CoverLetterSanitizer.removeJobDescriptionQuotes(letter, jobDescription);
+
+      expect(result, isNot(contains('with  bliQ OUR vision')));
+      expect(
+        result,
+        contains('mit großem Interesse habe ich Ihre Stellenausschreibung gelesen.'),
+      );
+    });
+
+    test('liefert Text unverändert, wenn keine Stellenbeschreibung vorliegt',
+        () {
+      const letter =
+          'Sehr geehrte Damen und Herren,\n\n'
+          'Ich bewerbe mich auf die ausgeschriebene Stelle.\n\n'
+          'Mit freundlichen Grüßen\nMatthias Struck';
+
+      expect(
+        CoverLetterSanitizer.removeJobDescriptionQuotes(letter, null),
+        letter,
+      );
+      expect(
+        CoverLetterSanitizer.removeJobDescriptionQuotes(letter, '   '),
+        letter,
+      );
+    });
+  });
 }

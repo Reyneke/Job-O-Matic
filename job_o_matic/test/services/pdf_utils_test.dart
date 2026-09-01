@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:job_o_matic/data/services/pdf/pdf_utils.dart';
 
@@ -13,6 +12,30 @@ void main() {
     test('dateFormatMonthYear formatiert als MM.JJJJ', () {
       final date = DateTime(2026, 8, 21);
       expect(PdfUtils.dateFormatMonthYear.format(date), '08.2026');
+    });
+
+    test('extractCityFromAddress extrahiert die Stadt aus einer deutschen Adresse',
+        () {
+      expect(
+          PdfUtils.extractCityFromAddress('Glacisweg 9,13583 Berlin'),
+          'Berlin');
+      expect(
+        PdfUtils.extractCityFromAddress('Musterstraße 1, 12345 Berlin'),
+        'Berlin',
+      );
+      expect(
+        PdfUtils.extractCityFromAddress('Musterstraße 1, 12345 Berlin,'),
+        'Berlin',
+      );
+    });
+
+    test('extractCityFromAddress liefert null bei fehlender/adressloser Eingabe',
+        () {
+      expect(PdfUtils.extractCityFromAddress(null), isNull);
+      expect(PdfUtils.extractCityFromAddress('   '), isNull);
+      expect(PdfUtils.extractCityFromAddress('Ohne Postleitzahl'), isNull);
+      expect(PdfUtils.extractCityFromAddress('12345'), isNull);
+      expect(PdfUtils.extractCityFromAddress('12345 '), isNull);
     });
 
     test('Seitenränder entsprechen DIN 5008', () {

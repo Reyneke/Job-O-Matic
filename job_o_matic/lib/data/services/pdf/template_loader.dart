@@ -8,7 +8,7 @@ import 'package:logging/logging.dart';
 const String _defaultCoverLetterTemplate = '''
 {{salutation}}
 
-mit großem Interesse habe ich Ihre Stellenausschreibung für die Position als {{jobTitle}} bei der {{company}} gelesen. {{job_description_excerpt}}
+mit großem Interesse habe ich Ihre Stellenausschreibung für die Position als {{jobTitle}} bei der {{company}} gelesen.
 
 Ich verfüge über {{experience_years}} Berufserfahrung und bringe fundierte Kenntnisse in folgenden Bereichen mit: {{relevant_skills}}. In meiner bisherigen Tätigkeit konnte ich umfangreiche Erfahrungen in der Entwicklung und Umsetzung komplexer Softwareprojekte sammeln.
 
