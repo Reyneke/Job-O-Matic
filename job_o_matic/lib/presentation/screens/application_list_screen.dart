@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import '../../data/repositories/job_repository.dart';
 import '../../models/application.dart';
+import 'send_screen.dart';
 
 /// Screen 3: Overview of all generated applications.
 ///
@@ -20,6 +21,10 @@ class ApplicationListScreen extends ConsumerStatefulWidget {
 
 class _ApplicationListScreenState extends ConsumerState<ApplicationListScreen> {
   final Logger _log = Logger('ApplicationListScreen');
+
+  /// Opt-in „Erstellen & Versenden“ (Phase E): Nach erfolgreicher Generierung
+  /// automatisch zum Versand-Screen (Sammelversand der neuen Bewerbungen).
+  bool _sendAfterGenerate = false;
 
   @override
   void initState() {
@@ -110,6 +115,16 @@ class _ApplicationListScreenState extends ConsumerState<ApplicationListScreen> {
         backgroundColor: Colors.green,
       ),
     );
+
+    // Opt-in „Erstellen & Versenden“ (Phase E): nach erfolgreicher
+    // Generierung direkt den Sammelversand-Dialog der neuen Bewerbungen
+    // öffnen (inkl. Dublettenschutz-Bestätigung).
+    if (_sendAfterGenerate && completed > 0 && context.mounted) {
+      context.push(
+        '/send',
+        extra: const SendRequest(sendAllNew: true, autoSend: true),
+      );
+    }
   }
 
   void _retryApplication(int id) {
@@ -307,6 +322,11 @@ class _ApplicationListScreenState extends ConsumerState<ApplicationListScreen> {
           onPressed: () => context.go('/'),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.send_outlined),
+            tooltip: 'E-Mail-Versand',
+            onPressed: () => context.push('/send'),
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.developer_mode),
             tooltip: 'Debug-Optionen',
@@ -444,6 +464,19 @@ class _ApplicationListScreenState extends ConsumerState<ApplicationListScreen> {
                         : 'Alle generieren',
                   ),
                 ),
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: _sendAfterGenerate,
+                  onChanged: (value) =>
+                      setState(() => _sendAfterGenerate = value ?? false),
+                  title: const Text('Erstellen & Versenden'),
+                  subtitle: const Text(
+                    'Nach der Generierung direkt zum E-Mail-Versand '
+                    '(Sammelversand der neuen Bewerbungen).',
+                  ),
+                ),
               ],
             ),
           ),
@@ -482,6 +515,10 @@ class _ApplicationListScreenState extends ConsumerState<ApplicationListScreen> {
                       final isFailed = app.status == ApplicationStatus.failed;
                       final isCompleted =
                           app.status == ApplicationStatus.completed;
+                      final isSendable =
+                          (app.status == ApplicationStatus.completed ||
+                              app.status == ApplicationStatus.exported) &&
+                          app.pdfPath != null;
 
                       IconData statusIcon;
                       Color statusColor;
@@ -532,6 +569,15 @@ class _ApplicationListScreenState extends ConsumerState<ApplicationListScreen> {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              if (isSendable)
+                                IconButton(
+                                  icon: const Icon(Icons.send_outlined),
+                                  tooltip: 'Per E-Mail senden',
+                                  onPressed: () => context.push(
+                                    '/send',
+                                    extra: SendRequest(applicationId: app.id),
+                                  ),
+                                ),
                               if (isFailed)
                                 IconButton(
                                   icon: const Icon(Icons.refresh),

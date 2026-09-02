@@ -32,7 +32,7 @@ void main() {
     await dbHelper.close();
   });
 
-  MailQueueEntry _entry({
+  MailQueueEntry entry({
     String id = 'e1',
     MailStatus status = MailStatus.pending,
     int retryCount = 0,
@@ -55,7 +55,7 @@ void main() {
 
   group('SqliteMailQueueStore', () {
     test('insert + loadAll Roundtrip erhaelt alle Felder', () async {
-      await store.insert(_entry());
+      await store.insert(entry());
 
       final loaded = await store.loadAll();
       expect(loaded, hasLength(1));
@@ -72,7 +72,7 @@ void main() {
     });
 
     test('updateStatus persistiert Status + Fehler + nextTryAt', () async {
-      await store.insert(_entry());
+      await store.insert(entry());
       await store.updateStatus(
         'e1',
         MailStatus.failed,
@@ -90,23 +90,23 @@ void main() {
     });
 
     test('loadPending laedt pending/queued und abgelaufene failed', () async {
-      await store.insert(_entry(id: 'a', status: MailStatus.pending));
-      await store.insert(_entry(id: 'b', status: MailStatus.queued));
+      await store.insert(entry(id: 'a', status: MailStatus.pending));
+      await store.insert(entry(id: 'b', status: MailStatus.queued));
       await store.insert(
-        _entry(
+        entry(
           id: 'c',
           status: MailStatus.failed,
           nextTryAt: DateTime.now().subtract(const Duration(minutes: 5)),
         ),
       );
       await store.insert(
-        _entry(
+        entry(
           id: 'd',
           status: MailStatus.failed,
           nextTryAt: DateTime.now().add(const Duration(minutes: 30)),
         ),
       );
-      await store.insert(_entry(id: 'e', status: MailStatus.sent));
+      await store.insert(entry(id: 'e', status: MailStatus.sent));
 
       final pending = await store.loadPending();
       final ids = pending.map((e) => e.id).toSet();
@@ -119,10 +119,10 @@ void main() {
     });
 
     test('countByStatus zaehlt offene bzw. gesendete Eintraege', () async {
-      await store.insert(_entry(id: 'a', status: MailStatus.pending));
-      await store.insert(_entry(id: 'b', status: MailStatus.queued));
-      await store.insert(_entry(id: 'c', status: MailStatus.sent));
-      await store.insert(_entry(id: 'd', status: MailStatus.sent));
+      await store.insert(entry(id: 'a', status: MailStatus.pending));
+      await store.insert(entry(id: 'b', status: MailStatus.queued));
+      await store.insert(entry(id: 'c', status: MailStatus.sent));
+      await store.insert(entry(id: 'd', status: MailStatus.sent));
 
       expect(await store.countByStatus(MailStatus.pending), 2);
       expect(await store.countByStatus(MailStatus.sent), 2);
@@ -130,9 +130,9 @@ void main() {
     });
 
     test('deleteAllCompleted raeumt sent/failed/bounced auf', () async {
-      await store.insert(_entry(id: 'a', status: MailStatus.pending));
-      await store.insert(_entry(id: 'b', status: MailStatus.sent));
-      await store.insert(_entry(id: 'c', status: MailStatus.failed));
+      await store.insert(entry(id: 'a', status: MailStatus.pending));
+      await store.insert(entry(id: 'b', status: MailStatus.sent));
+      await store.insert(entry(id: 'c', status: MailStatus.failed));
 
       await store.deleteAllCompleted();
 

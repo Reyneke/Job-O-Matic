@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/repositories/job_repository.dart';
 import '../../data/services/ai/cover_letter_ai_service.dart';
 import '../../models/application.dart';
+import 'send_screen.dart';
 
 /// Screen 3a: Detail view of a single application.
 ///
@@ -344,6 +345,22 @@ class ApplicationDetailScreen extends ConsumerWidget {
               ),
 
             const SizedBox(height: 16),
+
+            // Wiederversand / Versand einzelner Bewerbung (Phase E)
+            if (application.pdfPath != null &&
+                (application.status == ApplicationStatus.completed ||
+                    application.status == ApplicationStatus.exported))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: FilledButton.icon(
+                  onPressed: () => context.push(
+                    '/send',
+                    extra: SendRequest(applicationId: application.id),
+                  ),
+                  icon: const Icon(Icons.send),
+                  label: const Text('Per E-Mail senden'),
+                ),
+              ),
 
             // Action buttons
             Row(

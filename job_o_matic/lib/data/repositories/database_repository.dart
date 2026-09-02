@@ -81,6 +81,20 @@ class DatabaseRepository {
     );
   }
 
+  /// E-Mail-Adresse des Arbeitgebers an der Bewerbung persistieren
+  /// (Ergebnis der Adress-Kaskade Stufen 1–3 bzw. manuelle Eingabe Stufe 4 –
+  /// doc/plan/14-Email.md §Kaskade).
+  Future<void> updateEmailAddress(int applicationId, String? address) async {
+    final db = await _dbHelper.database;
+    await db.update(
+      'applications',
+      {'email_address': address},
+      where: 'id = ?',
+      whereArgs: [applicationId],
+    );
+    _log.fine('email_address für Application $applicationId gesetzt');
+  }
+
   /// Prüfen, ob eine URL bereits in den letzten 90 Tagen verarbeitet wurde.
   Future<bool> isDuplicateUrl(String url) async {
     final db = await _dbHelper.database;

@@ -6,6 +6,7 @@ import '../presentation/screens/application_list_screen.dart';
 import '../presentation/screens/application_detail_screen.dart';
 import '../presentation/screens/api_key_settings_screen.dart';
 import '../presentation/screens/debug_test_runner_screen.dart';
+import '../presentation/screens/send_screen.dart';
 
 /// Riverpod provider for the GoRouter instance.
 final goRouterProvider = Provider<GoRouter>((ref) {
@@ -37,6 +38,17 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/debug',
         name: 'debugTestRunner',
         builder: (context, state) => const DebugTestRunnerScreen(),
+      ),
+      GoRoute(
+        path: '/send',
+        name: 'send',
+        builder: (context, state) {
+          final request = state.extra;
+          if (request is SendRequest) {
+            return SendScreen(request: request);
+          }
+          return const SendScreen();
+        },
       ),
       GoRoute(
         path: '/applications',

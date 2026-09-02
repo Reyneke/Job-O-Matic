@@ -264,19 +264,26 @@ class MailQueueService {
     } else {
       // Retry mit Backoff
       final backoff = _calculateBackoff(newRetryCount);
+      final nextTryAt = DateTime.now().add(backoff);
       _updateEntry(
         entry,
         status: MailStatus.failed,
         retryCount: newRetryCount,
-        nextTryAt: DateTime.now().add(backoff),
+        nextTryAt: nextTryAt,
         errorMessage: errorMessage,
       );
       _log.warning(
         'E-Mail-Versand fehlgeschlagen (Versuch $newRetryCount/$_maxRetries): '
         '${entry.id} – nächster Versuch in ${backoff.inMinutes}min',
       );
-      // Wieder in die Queue einreihen
-      _queue.add(entry);
+      // Den AKTUALISIERTEN Eintrag (failed + nextTryAt) wieder einreihen,
+      // nicht das Original-Objekt: sonst bliebe der Queue-Eintrag `pending`
+      // und `processQueue` würde sofort erneut senden, statt den Backoff
+      // abzuwarten (durch Integrationstest aufgedeckt, Phase F).
+      final updatedIndex = _allEntries.indexWhere((e) => e.id == entry.id);
+      if (updatedIndex >= 0) {
+        _queue.add(_allEntries[updatedIndex]);
+      }
     }
   }
 

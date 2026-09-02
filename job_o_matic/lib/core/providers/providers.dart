@@ -18,6 +18,7 @@ import '../../data/services/autosave_service.dart';
 import '../../data/services/pdf_cleanup_service.dart';
 import '../../data/services/email/email_service.dart';
 import '../../data/services/email/email_template_service.dart';
+import '../../data/services/email/email_discovery_service.dart';
 import '../../data/services/email/mail_queue_service.dart';
 import '../../data/services/email/mail_queue_store.dart';
 import '../../data/services/email/circuit_breaker.dart';
@@ -174,6 +175,12 @@ final emailServiceProvider = Provider<EmailService>((ref) {
 
 final emailTemplateServiceProvider = Provider<EmailTemplateService>((ref) {
   return EmailTemplateService();
+});
+
+final emailDiscoveryServiceProvider = Provider<EmailDiscoveryService>((ref) {
+  // Phase C: E-Mail-Adress-Ermittlung (Kaskade Stufen 1–3). Nutzt einen
+  // eigenen http.Client mit Timeout; Stufe 4 (manuell) liegt in der UI.
+  return EmailDiscoveryService();
 });
 
 final circuitBreakerProvider = Provider<CircuitBreaker>((ref) {

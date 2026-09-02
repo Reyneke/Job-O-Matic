@@ -377,4 +377,14 @@ class DatabaseHelper {
   /// echte Schema-Definition laufen statt einer Test-Kopie).
   @visibleForTesting
   Future<void> createSchemaForTesting(Database db) => _onCreate(db, 7);
+
+  /// Test-Seam: führt die echte Migrationslogik auf einer fremden DB aus
+  /// (für den v6→v7-Migrationstest mit einer Datei-Datenbank).
+  @visibleForTesting
+  Future<void> runMigrationForTesting(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) =>
+      _onUpgrade(db, oldVersion, newVersion);
 }

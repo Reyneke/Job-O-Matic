@@ -33,7 +33,7 @@ Verifizierte Absenderidentität (Entscheidung siehe unten):
 | Versand-E-Mail-Adresse | `kleitmiandefoot@gmail.com` *(zugleich Antwortadresse für Rückantworten – siehe Hinweis unten)* |
 | SMTP-Relay-Server | `smtp-relay.brevo.com` |
 | SMTP-Port | `587` (STARTTLS) |
-| SMTP-Login | `b16d96001@smtp-brevo.com` *(vor Commit des Repos ggf. ebenfalls entfernen – Zugangsdaten gehören in die App, nicht in die Doku)* |
+| SMTP-Login | *(nicht im Repo – Zugangsdaten gehören in die App, nicht in die Doku)* |
 | SMTP-Passwort | **Nicht in diesem Dokument** – wird beim ersten Versand über `ApiKeyService` in Secure Storage abgelegt (neue Keys `brevo_smtp_login`, `brevo_smtp_password`) |
 
 > **Antwort-/Reply-Adresse:** Brevo setzt ohne explizites `replyTo` die Absenderadresse als Antwortadresse ein – Rückantworten von Arbeitgebern landen also direkt im Postfach von `kleitmiandefoot@gmail.com`. Das ist beabsichtigt, setzt aber voraus, dass dieses Postfach dem Nutzer gehört und aktiv überwacht wird (kein `noreply`-Blackhole). `EmailService.sendEmail()` setzt `replyTo` zusätzlich explizit – gleiche Adresse wie `sender`, Name aus CV-Daten (siehe Umsetzungsplan Phase A).
@@ -198,31 +198,46 @@ Die Umsetzung erfolgt in **sechs Phasen** (angelehnt an `6-Datenbank-Persistenz.
 
 > **Hinweis zu Phase B:** Das DB-Schema (v7) enthält `bounced` im CHECK und im Enum, wird in Phase 1 aber noch **nicht** geschrieben (Entscheidung „Bounce-Erkennung“). Der `emailStatus` wird von `MailDispatcher` bisher nur im Queue-Lebenszyklus verfolgt; das Schreiben an die `applications`-Tabelle (State je Bewerbung) wird mit Phase D verdrahtet, sobald der Versand-Screen die Werte braucht.
 
-### Phase C: E-Mail-Adress-Ermittlung (2 Tage)
+### Phase C: E-Mail-Adress-Ermittlung (2 Tage) ✅
 
-- [ ] **`EmailDiscoveryService`** – Kaskade Stufen 1–3 (Regex auf Bestandsdaten → `mailto:` → genau 1 Kontaktseite mit Timeout)
-- [ ] **Stufe 4 + Persistenz:** manuelle Eingabe im Versand-Dialog; gefundene Adresse als `application.emailAddress` speichern
-- [ ] **Validierung:** RFC-5322-Prüfung; CAPTCHA-/Blocker-Abbruch → Sprung zu Stufe 4
-- [ ] **Unit-Tests mit Mock-HTTP:** `mailto:`-Treffer, Kontaktseiten-Follow, CAPTCHA-Abbruch, Regex-Positiv/Negativ
+- [x] **`EmailDiscoveryService`** (`lib/data/services/email/email_discovery_service.dart`) – Kaskade Stufen 1–3: Stufe 1 (Regex auf `companyAddress`/`jobDescription`, **kein Netz**), Stufe 2 (`mailto:`-Links der Anzeige inkl. HTML-Entity-Dekodierung und `?subject`-Abschnitt), Stufe 3 (genau **1** Kontaktlink `Kontakt`/`Impressum`/`Karriere` + engl. Pendants, relativ aufgelöst, **max. 1 Zusatz-Request mit Timeout**); Ergebnis `EmailDiscoveryResult` mit Fundstelle (`storedData`/`mailtoLink`/`contactPage`/`none`) und optionaler Begründung
+- [x] **Stufe 4 + Persistenz:** manuelle Eingabe im Versand-Dialog folgt in Phase D (UI); Persistenz vorbereitet über `DatabaseRepository.updateEmailAddress(applicationId, address)` – gespeicherte Adresse macht Stufen 1–3 beim Wiederholungsversand entbehrlich
+- [x] **Validierung:** `email_address_utils.dart` mit RFC-5322-naher Prüfung `isValidEmail()` + `emailAddressRegex`/`firstEmailAddressIn()` (teilbar für den Versand-Dialog); **CAPTCHA/Blocker-Abbruch** (403/429/503, Marker wie `captcha`/`recaptcha`/`access denied`) und **Timeout** → Kaskade bricht ab (kein Umgehen, kein weiterer Request) → Stufe 4
+- [x] **Provider:** `emailDiscoveryServiceProvider` registriert (`providers.dart`)
+- [x] **Unit-Tests mit Mock-HTTP** (`test/services/email_discovery_service_test.dart`, 12 Tests): Regex-Positiv/Negativ, `mailto:`-Treffer, Entity-/Query-Dekodierung, Kontaktseiten-Follow (Request-Reihenfolge geprüft), kein Treffer → `none`, CAPTCHA-Abbruch (kein Follow), HTTP 403, Timeout – **Suite gesamt 157 grün**
 
-### Phase D: Versand-Screen `/send` (2–3 Tage)
+> **Hinweis zu Phase C:** Stufe 4 (manuelles Eingabefeld im Dialog) ist bewusst UI-Arbeit und wird mit Phase D (`/send`-Screen) umgesetzt; der Service liefert dafür `source: none` + Begründung. DSGVO-Hinweis: Die Adresse wird erst nach Nutzerbestätigung persistiert (siehe Phasen D/E).
 
-- [ ] Route `/send` registrieren (analog Screen 3 in `2-Workflow.md`)
-- [ ] Riverpod-Provider: `mailDispatcherProvider` + Stream für `MailDispatcherStats`
-- [ ] Liste versandfähiger Bewerbungen (`completed`/`exported`) mit Checkbox, editierbarer Vorschau sowie Empfänger-/CC-/BCC-Feldern
-- [ ] Guards: kein API-Key → `/settings` mit Hinweis-Banner; keine versandfähigen Bewerbungen → zurück
-- [ ] Statusanzeige: `pending`/`sent`/`failed` + Circuit-Breaker-Zustand mit Retry-Zeitpunkt
-- [ ] „Zuletzt gesendet am“ aus `sent_email_log` (MAX(`sent_at`) je `application_id`)
+### Phase D: Versand-Screen `/send` (2–3 Tage) ✅
 
-### Phase E: Versand-Workflows (1–2 Tage)
+- [x] **Route `/send`** registriert (`app_router.dart`, Name `send`); Einstieg über neues Versand-Icon in der AppBar der Ergebnisübersicht (`/applications`)
+- [x] **Riverpod-Provider:** `mailDispatcherProvider` + periodische Live-Aktualisierung der `MailDispatcherStats` (alle 3 s, `Timer`-basiert statt Stream — bewusst schlank; Queue-Status kommt aus dem persistierten Store)
+- [x] **Liste versandfähiger Bewerbungen** (`completed`/`exported` **mit PDF**) als aufklappbare Karten: Checkbox, editierbare Empfänger-/CC-/BCC-/Betreff-/Text-Felder (Entwurf je Bewerbung mit vorbelegter Template-Vorschau), RFC-5322-Fehleranzeige im Empfängerfeld
+- [x] **Guards:** kein Brevo-API-Key → Hinweis + Button „Zu den Einstellungen“ (`/settings`, statt Auto-Redirect – bewusst freundlich); keine versandfähigen Bewerbungen → Empty-State mit Button zur Ergebnisübersicht
+- [x] **Statusanzeige:** Queue-Statistik (`pending`/`sent`/`failed`) + Circuit-Breaker-Zustand (`OK`/`Test`/`OFFEN`) als Karte; Zusatz: E-Mail-Status je Bewerbung wird nach dem Versand an `applications.email_status` geschrieben (`JobRepository.updateApplicationEmail`)
+- [x] **„Zuletzt gesendet am“** aus `sent_email_log` (`latestSentAt`/MAX(`sent_at`) je `application_id`) in der Zeile je Bewerbung
+- [x] **Adress-Kaskade in der UI (Stufe 4 + Ermitteln):** „Ermitteln“-Button je Bewerbung ruft `EmailDiscoveryService` (Stufen 1–3), Übernehmen-Dialog persistiert die Adresse (`updateApplicationEmail`); kein Treffer → Hinweis auf manuelle Eingabe (Stufe 4)
+- [x] **Dublettenschutz-UI:** History-Prüfung (`hasSent`) je Bewerbung („bereits gesendet“-Kennzeichnung) + **Bestätigungsdialog** beim Wieder-/Sammelversand; „Alle neuen senden“ überspringt bereits Gesendete
+- [x] **Aktion „Ausgewählte senden“/„Alle neuen senden“:** enqueued via `MailDispatcher` (inkl. PDF-Anhang, Reply-To, CC/BCC) → `processQueue()` sofort; Rest bleibt persistent in der Queue und wird vom Dispatcher-Timer nachgeliefert
 
-- [ ] Sammelversand „Alle neuen senden“
-- [ ] Wiederversand einzelner Bewerbungen aus `/applications` und `/applications/:id`
-- [ ] Option „Erstellen & Versenden“ (Opt-in-Checkbox am Ende des Generierungs-Workflows)
-- [ ] Fallback „Als Entwurf exportieren“ bei 401 (Absender nicht verifiziert)
+> **Hinweis zu Phase D:** Die Statusanzeige nutzt bewusst einen Timer statt eines Riverpod-Streams (der Dispatcher/Queue ist kein `ChangeNotifier`). Versand aus `/applications` bzw. `/applications/:id`, „Erstellen & Versenden“ und der 401-Fallback „Als Entwurf exportieren“ folgen in Phase E; der Retention-Cleanup-Job + „Verlauf löschen“-Button wandern in die Einstellungen (Phase E/F).
 
-### Phase F: Tests, Qualität & Recht (1–2 Tage)
+### Phase E: Versand-Workflows (1–2 Tage) ✅
 
-- [ ] Integrationstests mit `MockClient`: Erfolgsfall (mit Anhängen + CC/BCC), HTTP 429/Tageslimit (persistenter Zähler), Circuit-Breaker-OPEN, Dublettenfall (History-Prüfung + Bestätigungsdialog)
-- [ ] Retention-Test: Cleanup > 6 Monate + „Verlauf löschen“-Button; Migrationstest v6 → v7 (bestehende Daten bleiben erhalten; Fremdschlüssel-Verhalten prüfen)
-- [ ] DSGVO-Hinweistext im Versand-Screen; Scraping-Ansatz (nur Kontaktseite, max. 1 Zusatz-Request) dokumentieren
+- [x] **Sammelversand „Alle neuen senden“:** im `/send`-Screen (Bottom-Bar, überspringt bereits Gesendete) **und** als Direkteinstieg aus der Ergebnisübersicht (SendRequest `sendAllNew` → `/send`); zusätzlich Auto-Sammelversand nach Generierung (siehe „Erstellen & Versenden“)
+- [x] **Wiederversand einzelner Bewerbungen:** 📤-Icon je Zeile in `/applications` und Button „Per E-Mail senden“ in `/applications/:id` – beide öffnen `/send` mit vorausgewählter Bewerbung (`SendRequest.applicationId`); Dublettenschutz-Bestätigung erfolgt dort
+- [x] **Option „Erstellen & Versenden“:** Opt-in-Checkbox im Generierungs-Workflow (`/applications`, neben „Alle generieren“) – nach erfolgreicher Generierung öffnet sich `/send` mit `SendRequest(sendAllNew, autoSend)` und startet den Bestätigungs-/Sammelversand-Dialog
+- [x] **Fallback „Als Entwurf exportieren“ bei 401:** Nach dem Versand werden fehlgeschlagene Einträge mit HTTP 401 (Absender nicht verifiziert) erkannt → Dialog bietet Export der PDF als Entwurf nach `Desktop/Job-O-Matic_Export` an; Eintrag wird im Audit-Log als `draft_exported` geschrieben (`SentEmailLogRepository`)
+
+> **Hinweis zu Phase E:** Die Einstiege nutzen denselben `/send`-Screen über ein `SendRequest`-Extra (`applicationId`/`sendAllNew`/`autoSend`) – kein duplizierter Versand-Code. Einziger Erkennungsweg für den 401-Fallback ist die `errorMessage` des Queue-Eintrags (enthält „401“); eine saubere Fehlerklassifikation im Queue-Eintrag wäre ein möglicher Folge-Refactor.
+
+### Phase F: Tests, Qualität & Recht (1–2 Tage) ✅
+
+- [x] **Integrationstests mit `MockClient`** (`test/services/mail_dispatcher_integration_test.dart`, 5 Tests, In-Memory-SQLite + echtes Schema): Erfolgsfall (Anhänge + CC/BCC, Audit-Log `hasSent`, Tageszähler = 1), HTTP 429 bleibt `failed` ohne Zähler-Erhöhung, **Tageslimit 300 (persistenter Zähler) verhindert den Versand ohne Request**, Circuit-Breaker-OPEN blockiert ohne Request, Wiederholungen erzeugen je einen eigenen Audit-Log-Eintrag (2 Versuche → 2 Einträge)
+- [x] **Migrationstest v6 → v7** (`test/repositories/database_migration_test.dart`, Datei-DB, 2 Tests): Daten bleiben erhalten (applications + mail_queue), neue Spalten (`email_status`/`email_address`/`sender_*`/`cc`/`bcc`) + `sent_email_log` angelegt; **Fremdschlüssel-Verhalten**: Log-Eintrag blockiert das Löschen der Application (kein CASCADE), nach `deleteByApplication` klappt das Löschen
+- [x] **Retention:** `deleteOlderThan`-Tests (Phase B) + **Cleanup-Job beim App-Start** (6 Monate, `main.dart`) + **„Verlauf löschen“-Button** in den Einstellungen (`/settings`, Audit-Log `deleteAll` mit Bestätigungsdialog)
+- [x] **DSGVO-Hinweistext im Versand-Screen** (Aufbewahrung 6 Monate, löschbar in Einstellungen, Adress-Ermittlung nur Kontaktseite); Scraping-Ansatz (nur Kontaktseite, max. 1 Zusatz-Request) ist in `EmailDiscoveryService`-Doc + Plan dokumentiert
+- [x] **Dabei gefundener Bug behoben:** `MailQueueService._handleFailure` reihte nach einem Fehler das **Original**-Queue-Objekt (weiter `pending`) wieder ein statt des aktualisierten Eintrags → der Retry-Backoff griff nicht und `processQueue` sendete sofort mehrfach erneut (bis Rate-Limit). Jetzt wird der aktualisierte Eintrag (`failed` + `nextTryAt`) wieder eingereiht – durch den 429-Integrationstest aufgedeckt und abgesichert.
+
+> **Teststand:** Suite gesamt **164 Tests grün** (Erfolgsfall, 429, Tageslimit-Guard, Circuit-Breaker-OPEN, Dubletten-/Wiederholungsfall, Migration v6→v7, Retention, Adress-Kaskade, E-Mail-Service, Dispatcher).
+

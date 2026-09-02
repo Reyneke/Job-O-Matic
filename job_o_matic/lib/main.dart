@@ -67,7 +67,20 @@ class _JobOMaticAppState extends ConsumerState<JobOMaticApp> {
       log.warning('PDF-Cleanup fehlgeschlagen: $e');
     }
 
-    // 2. MailQueueService: offene pending-Einträge nach App-Start wieder
+    // 2. Retention (DSGVO): Versand-Audit-Log automatisch nach 6 Monaten
+    //    bereinigen (doc/plan/14-Email.md – „Aufbewahrung“).
+    try {
+      final logRepo = ref.read(sentEmailLogRepositoryProvider);
+      final cutoff = DateTime.now().subtract(const Duration(days: 180));
+      final deleted = await logRepo.deleteOlderThan(cutoff);
+      if (deleted > 0) {
+        log.info('Retention: $deleted Audit-Log-Einträge (> 6 Monate) gelöscht');
+      }
+    } catch (e) {
+      log.warning('Retention-Cleanup fehlgeschlagen: $e');
+    }
+
+    // 3. MailQueueService: offene pending-Einträge nach App-Start wieder
     //    anbieten (KEIN stiller Auto-Versand – der Nutzer bestätigt erneut,
     //    siehe doc/plan/14-Email.md §Fehlerbehandlung)
     try {
@@ -77,7 +90,7 @@ class _JobOMaticAppState extends ConsumerState<JobOMaticApp> {
       log.warning('Requeue pending E-Mails fehlgeschlagen: $e');
     }
 
-    // 3. MailDispatcher starten (für Hintergrund-Queue-Verarbeitung)
+    // 4. MailDispatcher starten (für Hintergrund-Queue-Verarbeitung)
     try {
       final mailDispatcher = ref.read(mailDispatcherProvider);
       mailDispatcher.start();

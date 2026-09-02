@@ -261,6 +261,32 @@ class JobRepository extends ChangeNotifier {
     }
   }
 
+  /// Update an application's email details (address + send status) and
+  /// persist. Used by the /send screen (E-Mail-Adress-Ermittlung Stufe 4 +
+  /// Status je Bewerbung).
+  void updateApplicationEmail(
+    int id, {
+    String? emailAddress,
+    EmailStatus? emailStatus,
+  }) {
+    final index = _applications.indexWhere((a) => a.id == id);
+    if (index < 0) return;
+    var updated = _applications[index];
+    if (emailAddress != null) {
+      updated = updated.copyWith(emailAddress: emailAddress);
+    }
+    if (emailStatus != null) {
+      updated = updated.copyWith(emailStatus: emailStatus);
+    }
+    _applications[index] = updated;
+    _log.fine(
+      'Applikation $id: emailAddress/emailStatus aktualisiert'
+      ' (${updated.emailStatus.storeValue})',
+    );
+    _dbRepo.updateApplication(updated);
+    notifyListeners();
+  }
+
   /// Directly add an application with job details (from search).
   void addApplication({
     required String jobTitle,
@@ -433,7 +459,9 @@ class JobRepository extends ChangeNotifier {
       );
     }
     if (_coverLetterAiService == null) {
-      throw const CoverLetterAiException('Kein KI-Anschreiben-Service verfügbar.');
+      throw const CoverLetterAiException(
+        'Kein KI-Anschreiben-Service verfügbar.',
+      );
     }
     // CV-Daten sicherstellen (wie generatePdf()).
     await _ensureCvDataLoaded();

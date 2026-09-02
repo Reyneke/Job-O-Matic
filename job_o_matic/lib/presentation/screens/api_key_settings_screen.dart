@@ -415,8 +415,78 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
                     ),
                   ),
                 ),
+
+                // E-Mail-Versand-Verlauf (DSGVO, Phase F)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('E-Mail-Verlauf',
+                            style: theme.textTheme.titleSmall),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Gesendete E-Mails und Versandversuche (Audit-Log) '
+                          'werden 6 Monate aufbewahrt und beim App-Start '
+                          'automatisch bereinigt. Hier können Sie den '
+                          'kompletten Verlauf manuell löschen.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => _deleteMailLog(context),
+                          icon: const Icon(Icons.delete_sweep_outlined),
+                          label: const Text('E-Mail-Versand-Verlauf löschen'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: theme.colorScheme.error,
+                            side: BorderSide(color: theme.colorScheme.error),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
+    );
+  }
+
+  Future<void> _deleteMailLog(BuildContext ctx) async {
+    final confirmed = await showDialog<bool>(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('E-Mail-Verlauf löschen'),
+        content: const Text(
+          'Möchten Sie den kompletten Versand-Verlauf (Audit-Log) wirklich '
+          'löschen? Dies kann nicht rückgängig gemacht werden.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final logRepo = ref.read(sentEmailLogRepositoryProvider);
+    final deleted = await logRepo.deleteAll();
+    if (!ctx.mounted) return;
+    ScaffoldMessenger.of(ctx).showSnackBar(
+      SnackBar(
+        content: Text(
+          deleted > 0
+              ? '$deleted Verlauf-Einträge gelöscht.'
+              : 'Kein E-Mail-Verlauf vorhanden.',
+        ),
+      ),
     );
   }
 }
