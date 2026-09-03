@@ -461,7 +461,11 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ExpansionTile(
-        key: PageStorageKey('send_app_${app.id}'),
+        // Kein PageStorageKey hier: sonst liest das interne Scrollable der
+        // TextField-Kinder beim Aufklappen den bool-Expanded-Zustand des Tiles
+        // aus demselben PageStorage und wirft 'bool is not a subtype of
+        // double?' (Windows-Crash beim Pfeil-Klick). Der Expanded-Zustand
+        // lebt im Element-State und überlebt Rebuilds.
         leading: Checkbox(
           value: selected,
           onChanged: _busy
