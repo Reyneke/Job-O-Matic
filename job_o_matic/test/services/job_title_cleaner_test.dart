@@ -105,5 +105,26 @@ void main() {
       expect(cleaned.contains('\u00e2\u20ac\u2122'), isFalse);
       expect(cleaned.contains('\u2019'), isTrue);
     });
+    test('dekodiert HTML-Entities im Titel (&#x2F; → /)', () {
+      // Realszenario aus dem Versand-Log: API-Titel mit kodiertem Slash.
+      const raw =
+          'Senior Flutter Developer &#x2F; Client Engineer, '
+          'AI-Native and Rust-Friendly (m&#x2F;f&#x2F;d)';
+      final cleaned = JobTitleCleaner.cleanJobTitle(raw);
+      expect(
+        cleaned,
+        'Senior Flutter Developer / Client Engineer, '
+        'AI-Native and Rust-Friendly (m/f/d)',
+      );
+    });
+
+    test('dekodiert &amp; und lässt normale Titel unverändert', () {
+      expect(
+        JobTitleCleaner.cleanJobTitle('Frontend &amp; Backend Developer'),
+        'Frontend & Backend Developer',
+      );
+      const plain = 'Flutter Developer (m/w/d)';
+      expect(JobTitleCleaner.cleanJobTitle(plain), plain);
+    });
   });
 }

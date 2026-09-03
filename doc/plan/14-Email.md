@@ -245,5 +245,15 @@ Die Umsetzung erfolgt in **sechs Phasen** (angelehnt an `6-Datenbank-Persistenz.
 
 **Umgesetzt:** Im `/send`-Screen gibt es jetzt einen 🐞-Button in der AppBar (**„Test-E-Mail an Absender senden“**). Er sendet die ausgewählte (bzw. erste versandfähige) Bewerbung inkl. PDF-Anhang, Reply-To und gesetzter CC/BCC testweise an `kleitmiandefoot@gmail.com` — durchläuft dabei den kompletten Versand-Pfad (Template, Queue, Audit-Log, Tageszähler) und zeigt das Ergebnis per Snackbar.
 
-> **Teststand:** Suite gesamt **164 Tests grün** (Erfolgsfall, 429, Tageslimit-Guard, Circuit-Breaker-OPEN, Dubletten-/Wiederholungsfall, Migration v6→v7, Retention, Adress-Kaskade, E-Mail-Service, Dispatcher).
+> **Teststand:** Suite gesamt **170 Tests grün** (Erfolgsfall, 429, 401-permanent, Tageslimit-Guard, Circuit-Breaker-OPEN, Dubletten-/Wiederholungsfall, Migration v6→v7, Retention, Adress-Kaskade, E-Mail-Service, Dispatcher, Entity-Bereinigung).
+
+### Bugfixes nach erstem Windows-Testlauf ✅
+
+Aus dem realen Versand-Log (`flutter run` + 🐞-Test-E-Mail) wurden fünf Punkte behoben:
+
+1. **401-Retry-Loop:** Ein `HTTP 401 – Key not found / unauthorized` (ungültiger oder nicht verifizierter Absender) korrigiert sich nicht durch erneutes Senden. Vorher versuchte die Queue 4× mit Backoff (1 min → 5 min → 30 min → 2 h). Jetzt gilt 401 als **permanenter Fehler → kein Retry**, der Queue-Eintrag wird sofort `failed`.
+2. **Fehlerklassifikation ging verloren:** `MailDispatcher` reicht die echte Fehlermeldung (`HTTP 401/429/…`) jetzt über `MailQueueService.recordSendError()` an den Queue-Eintrag durch — statt des generischen „Versand fehlgeschlagen“. Dadurch funktioniert die 401-Erkennung im Versand-Screen (Fallback „Als Entwurf exportieren“) zuverlässig und die Test-E-Mail-Snackbar zeigt die echte Ursache.
+3. **`&#x2F;` im Betreff:** Die Mustache-Engine (`mustache_template`) escaped standardmäßig HTML (u. a. `/` → `&#x2F;`). `EmailTemplateService.render()` nutzt jetzt `htmlEscapeValues: false` (E-Mail ist Klartext). Zusätzlich dekodieren `JobTitleCleaner` und `EmailTemplateService` echte HTML-Entities aus API-/Scrape-Quellen.
+4. **Flutter-Assertion** (`ListTile in ColoredBox`): Die CheckboxListTile „Erstellen & Versenden“ in der Ergebnisübersicht ist jetzt in ein eigenes `Material(type: transparency)` gewrappt — Ink-Effekte werden nicht mehr durch die Container-Fläche verdeckt.
+5. **Test-E-Mail-Feedback:** Bei Fehlern zeigt die Snackbar die konkrete Ursache (z. B. `HTTP 401: …`) statt „läuft automatisch weiter“.
 

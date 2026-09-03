@@ -132,6 +132,17 @@ class MailQueueService {
   /// Callback für tatsächlichen E-Mail-Versand.
   Future<MailStatus> Function(MailQueueEntry entry)? onSendEmail;
 
+  /// Vom [MailDispatcher] gemeldete Fehlermeldungen je Eintrag (für den
+  /// nächsten Status-Update), damit die echte Ursache (401/429/…) nicht in
+  /// „Versand fehlgeschlagen“ untergeht.
+  final Map<String, String> _sendErrors = {};
+
+  /// Zeichnet die konkrete Fehlermeldung für [entryId] auf. Wird in
+  /// `processQueue` beim nächsten Failure-Update konsumiert.
+  void recordSendError(String entryId, String message) {
+    _sendErrors[entryId] = message;
+  }
+
   MailQueueService({
     int maxEmailsPerMinute = 5,
     int maxRetries = 4,
@@ -238,10 +249,13 @@ class MailQueueService {
           _updateEntry(entry, status: MailStatus.sent);
           _log.info('E-Mail erfolgreich gesendet: ${entry.id}');
         } else {
-          _handleFailure(entry, 'Versand fehlgeschlagen');
+          final message =
+              _sendErrors.remove(entry.id) ?? 'Versand fehlgeschlagen';
+          _handleFailure(entry, message);
         }
       } catch (e) {
-        _handleFailure(entry, e.toString());
+        final message = _sendErrors.remove(entry.id) ?? e.toString();
+        _handleFailure(entry, message);
       }
     }
   }
@@ -250,8 +264,16 @@ class MailQueueService {
   void _handleFailure(MailQueueEntry entry, String errorMessage) {
     final newRetryCount = entry.retryCount + 1;
 
-    if (newRetryCount >= _maxRetries) {
-      // Endgültig fehlgeschlagen
+    // Permanente Fehler (z. B. HTTP 401 – ungültiger/nicht verifizierter
+    // Absender oder Key) korrigieren sich nicht durch erneutes Senden.
+    // Brevo würde sonst über Stunden mit demselben Fehler bombardiert.
+    final isPermanent =
+        errorMessage.contains('401') ||
+        errorMessage.toLowerCase().contains('key not found') ||
+        errorMessage.toLowerCase().contains('unauthorized');
+
+    if (newRetryCount >= _maxRetries || isPermanent) {
+      // Endgültig fehlgeschlagen (Status bleibt failed, kein weiterer Retry)
       _updateEntry(
         entry,
         status: MailStatus.failed,
@@ -259,7 +281,8 @@ class MailQueueService {
         errorMessage: errorMessage,
       );
       _log.severe(
-        'E-Mail endgültig fehlgeschlagen: ${entry.id} ($errorMessage)',
+        'E-Mail endgültig fehlgeschlagen: ${entry.id} '
+        '($errorMessage)${isPermanent ? ' [permanenter Fehler – kein Retry]' : ''}',
       );
     } else {
       // Retry mit Backoff

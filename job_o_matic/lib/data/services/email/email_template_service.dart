@@ -1,3 +1,4 @@
+import 'package:html/parser.dart' as html_parser;
 import 'package:logging/logging.dart';
 import 'package:mustache_template/mustache.dart';
 
@@ -39,7 +40,10 @@ Mit freundlichen Grüßen
   /// Rendert ein Template mit den gegebenen Daten.
   String render(String template, Map<String, dynamic> data) {
     try {
-      final compiled = Template(template);
+      // htmlEscapeValues: false – die E-Mail ist bewusst Klartext; die
+      // Standard-Engine würde sonst u. a. `/` zu `&#x2F;` escapen und so
+      // Jobtitel wie „Flutter Developer / Client Engineer“ verstümmeln.
+      final compiled = Template(template, htmlEscapeValues: false);
       final result = compiled.renderString(data);
       _log.fine('Template gerendert (${template.length} Zeichen)');
       return result;
@@ -59,9 +63,9 @@ Mit freundlichen Grüßen
     Map<String, dynamic>? extraData,
   }) {
     final data = <String, dynamic>{
-      'position': position,
-      'company': company,
-      'fullName': fullName,
+      'position': _cleanText(position),
+      'company': _cleanText(company),
+      'fullName': _cleanText(fullName),
       ...?extraData,
     };
 
@@ -76,12 +80,26 @@ Mit freundlichen Grüßen
     String? customTemplate,
   }) {
     final data = <String, dynamic>{
-      'position': position,
-      'company': company,
+      'position': _cleanText(position),
+      'company': _cleanText(company),
     };
 
     final template = customTemplate ?? defaultSubject;
     return render(template, data);
+  }
+
+  /// Dekodiert HTML-Entities (z. B. `&#x2F;` → `/`, `&amp;` → `&`), die aus
+  /// gescrapten/API-Job-Titeln stammen können, damit Betreff und Body sauber
+  /// sind (siehe doc/plan/14-Email.md – Log: „Senior Flutter Developer
+  /// &#x2F; …“). Nutzt den html-Parser (bereits Dependency).
+  String _cleanText(String text) {
+    if (text.isEmpty) return text;
+    if (!text.contains('&')) return text;
+    try {
+      return html_parser.parseFragment(text).text ?? text;
+    } catch (_) {
+      return text;
+    }
   }
 
   /// Validiert ein Template auf syntaktische Korrektheit.
@@ -112,8 +130,5 @@ class TemplateValidationResult {
   final bool isValid;
   final String? errorMessage;
 
-  const TemplateValidationResult({
-    required this.isValid,
-    this.errorMessage,
-  });
+  const TemplateValidationResult({required this.isValid, this.errorMessage});
 }

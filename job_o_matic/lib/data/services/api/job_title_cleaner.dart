@@ -1,3 +1,5 @@
+import 'package:html/parser.dart' as html_parser;
+
 /// Utility zur Bereinigung von Job-Titeln.
 class JobTitleCleaner {
   JobTitleCleaner._();
@@ -41,6 +43,17 @@ class JobTitleCleaner {
 
     // 0. Mojibake normalisieren (UTF-8 als Windows-1252 interpretiert)
     title = _normalizeMojibake(title);
+
+    // 0b. HTML-Entities dekodieren (z. B. &#x2F; → /, &amp; → &), die aus
+    //     API-/Scrape-Quellen stammen können (Realszenario: „Senior Flutter
+    //     Developer &#x2F; Client Engineer …“).
+    if (title.contains('&')) {
+      try {
+        title = html_parser.parseFragment(title).text ?? title;
+      } catch (_) {
+        // Unverändert lassen, falls das Parsen fehlschlägt.
+      }
+    }
 
     // 1. Bekannte Trennzeichen für Suffixe entfernen.
     final separators = [

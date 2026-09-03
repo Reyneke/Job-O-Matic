@@ -464,17 +464,23 @@ class _ApplicationListScreenState extends ConsumerState<ApplicationListScreen> {
                         : 'Alle generieren',
                   ),
                 ),
-                CheckboxListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  value: _sendAfterGenerate,
-                  onChanged: (value) =>
-                      setState(() => _sendAfterGenerate = value ?? false),
-                  title: const Text('Erstellen & Versenden'),
-                  subtitle: const Text(
-                    'Nach der Generierung direkt zum E-Mail-Versand '
-                    '(Sammelversand der neuen Bewerbungen).',
+                Material(
+                  // Eigener Material-Kontext, damit die Ink-Effekte der
+                  // CheckboxListTile nicht durch die Container-Fläche der
+                  // Progress-Box verdeckt werden (Flutter-Assertion).
+                  type: MaterialType.transparency,
+                  child: CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: _sendAfterGenerate,
+                    onChanged: (value) =>
+                        setState(() => _sendAfterGenerate = value ?? false),
+                    title: const Text('Erstellen & Versenden'),
+                    subtitle: const Text(
+                      'Nach der Generierung direkt zum E-Mail-Versand '
+                      '(Sammelversand der neuen Bewerbungen).',
+                    ),
                   ),
                 ),
               ],

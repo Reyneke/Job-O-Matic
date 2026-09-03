@@ -185,6 +185,10 @@ class MailDispatcher {
       } else {
         _circuitBreaker.onFailure();
         _logFailure(result);
+        _queueService.recordSendError(
+          entry.id,
+          result.errorMessage ?? 'Versand fehlgeschlagen',
+        );
         await _writeAuditLog(
           entry,
           status: SentEmailLogStatus.failed,
@@ -195,6 +199,7 @@ class MailDispatcher {
     } catch (e) {
       _circuitBreaker.onFailure();
       _log.severe('Fehler beim E-Mail-Versand: $e');
+      _queueService.recordSendError(entry.id, e.toString());
       await _writeAuditLog(
         entry,
         status: SentEmailLogStatus.failed,

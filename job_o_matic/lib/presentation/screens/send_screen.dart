@@ -945,13 +945,19 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       await _refreshLogState();
 
       if (!mounted) return;
-      final status = _queueLatestStatus(app.id);
-      _showSnack(
-        status == MailStatus.sent
-            ? 'Test-E-Mail an $target gesendet.'
-            : 'Test-E-Mail eingeplant - Versand läuft automatisch.',
-        isError: status == MailStatus.failed,
-      );
+      final entry = _queueLatestEntry(app.id);
+      final status = entry?.status ?? MailStatus.pending;
+      if (status == MailStatus.sent) {
+        _showSnack('Test-E-Mail an $target gesendet.');
+      } else if (status == MailStatus.failed) {
+        final error = entry?.errorMessage ?? 'unbekannter Fehler';
+        _log.severe('Test-E-Mail fehlgeschlagen: $error');
+        _showSnack('Test-E-Mail fehlgeschlagen: $error', isError: true);
+      } else {
+        _showSnack(
+          'Test-E-Mail eingeplant – Versand läuft automatisch weiter.',
+        );
+      }
     } catch (e) {
       _log.severe('Test-E-Mail fehlgeschlagen: $e');
       if (mounted) {
@@ -962,7 +968,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     }
   }
 
-  MailStatus _queueLatestStatus(int applicationId) {
+  /// Aktueller neuester Queue-Eintrag eines Versuchs (nach retryCount).
+  MailQueueEntry? _queueLatestEntry(int applicationId) {
     MailQueueEntry? newest;
     for (final e in ref.read(mailQueueServiceProvider).allEntries) {
       if (e.applicationId == '$applicationId' &&
@@ -970,7 +977,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         newest = e;
       }
     }
-    return newest?.status ?? MailStatus.pending;
+    return newest;
   }
 
   Future<void> _discoverAddress(Application app) async {
