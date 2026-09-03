@@ -721,13 +721,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
       // emailStatus je Bewerbung aus dem Queue-Endzustand ableiten.
       for (final id in ids) {
-        MailQueueEntry? newest;
-        for (final e in queueService.allEntries) {
-          if (e.applicationId == '$id' &&
-              (newest == null || e.retryCount > newest.retryCount)) {
-            newest = e;
-          }
-        }
+        final newest = _newestAttempt(queueService.allEntries, '$id');
         if (newest == null) continue;
         final status = switch (newest.status) {
           MailStatus.sent => EmailStatus.sent,
@@ -747,13 +741,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       for (final id in ids) {
         final app = repo.getApplication(id);
         if (app == null) continue;
-        MailQueueEntry? newest;
-        for (final e in queueService.allEntries) {
-          if (e.applicationId == '$id' &&
-              (newest == null || e.retryCount > newest.retryCount)) {
-            newest = e;
-          }
-        }
+        final newest = _newestAttempt(queueService.allEntries, '$id');
         final isSender401 =
             newest != null &&
             newest.status == MailStatus.failed &&
@@ -968,16 +956,12 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     }
   }
 
-  /// Aktueller neuester Queue-Eintrag eines Versuchs (nach retryCount).
+  /// Neuester Queue-Eintrag eines Versuchs einer Bewerbung.
   MailQueueEntry? _queueLatestEntry(int applicationId) {
-    MailQueueEntry? newest;
-    for (final e in ref.read(mailQueueServiceProvider).allEntries) {
-      if (e.applicationId == '$applicationId' &&
-          (newest == null || e.retryCount > newest.retryCount)) {
-        newest = e;
-      }
-    }
-    return newest;
+    return _newestAttempt(
+      ref.read(mailQueueServiceProvider).allEntries,
+      '$applicationId',
+    );
   }
 
   Future<void> _discoverAddress(Application app) async {
@@ -1125,4 +1109,23 @@ class _StatChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Wählt den ZEITLICH letzten Versuch eines Eintrags in [entries] aus
+/// (anhand `lastTryAt`, sonst `createdAt`). Bei mehreren Einträgen derselben
+/// Bewerbung (Wiederholungen, gleiche retryCount) ist das der aktuellste –
+/// wichtig, damit Fehler-Snackbar und 401-Erkennung die echte letzte Ursache
+/// zeigen statt eines älteren Versuchs.
+MailQueueEntry? _newestAttempt(List<MailQueueEntry> entries, String id) {
+  MailQueueEntry? newest;
+  DateTime? newestTime;
+  for (final e in entries) {
+    if (e.applicationId != id) continue;
+    final time = e.lastTryAt ?? e.createdAt;
+    if (newest == null || time.isAfter(newestTime!)) {
+      newest = e;
+      newestTime = time;
+    }
+  }
+  return newest;
 }
