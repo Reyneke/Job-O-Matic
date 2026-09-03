@@ -113,17 +113,17 @@ CAPTCHAs werden **nicht** umgangen (Abbruch + manuelles Eingreifen, siehe Entsch
 
 ## Umsetzungsschritte
 
-- [ ] **Backend-Gap 1:** Anhänge (CV-PDF + Anschreiben-PDF **getrennt**) + CC/BCC in `MailDispatcher`/`EmailService` verdrahten (PDF als Base64)
-- [ ] **Backend-Gap 2:** Dublettenschutz per History-Prüfung gegen `sent_email_log` + Bestätigungsdialog beim Wieder-/Sammelversand
-- [ ] **Backend-Gap 3:** Absender umstellen auf `kleitmiandefoot@gmail.com` (Default in `EmailService` ersetzen, SMTP-Passwort via Secure Storage – siehe „Absenderkonfiguration“)
-- [ ] **Backend-Gap 4/5:** `emailStatus` (eigenes Feld, siehe Entscheidungen) an `Application` + DB-Migration; Queue in SQLite persistieren
-- [ ] **Versand-Audit-Log:** Tabelle `sent_email_log` anlegen (Schema siehe Entscheidungen) und bei jedem Versand **und „Als Entwurf exportieren“** beschreiben; Retention 6 Monate + „Verlauf löschen“
-- [ ] **Screen 4 `/send`** mit Riverpod-State (`mailDispatcherProvider`), Guards, Statusanzeige
-- [ ] **Sammelversand** („alle neuen“) + **Wiederversand** aus `/applications` und `/applications/:id`
-- [ ] **E-Mail-Kaskade** (Stufen 1–3) in einen `EmailDiscoveryService` kapseln + Tests (Mock-HTTP)
-- [ ] **Option „Erstellen & Versenden“** am Ende des Generierungs-Workflows (Opt-in-Checkbox)
-- [ ] **Integrationstests:** Versand-Mock (`MockClient`), Circuit-Breaker-Fall, Dublettenfall
-- [ ] **DSGVO/Recht:** Hinweistext im Versand-Screen; Scraping-Ansatz auf Kontaktseiten dokumentieren
+- [x] **Backend-Gap 1:** Anhänge (MVP: kombinierte PDF aus `pdfPath`; getrennte CV-/Anschreiben-PDFs = eigenes Arbeitspaket) + CC/BCC in `MailDispatcher`/`EmailService` verdrahten (PDF als Base64)
+- [x] **Backend-Gap 2:** Dublettenschutz per History-Prüfung gegen `sent_email_log` + Bestätigungsdialog beim Wieder-/Sammelversand
+- [x] **Backend-Gap 3:** Absender umstellen auf `kleitmiandefoot@gmail.com` (Default in `EmailService` ersetzen; SMTP-Passwort via Secure Storage – siehe „Absenderkonfiguration“)
+- [x] **Backend-Gap 4/5:** `emailStatus` (eigenes Feld, siehe Entscheidungen) an `Application` + DB-Migration; Queue in SQLite persistieren
+- [x] **Versand-Audit-Log:** Tabelle `sent_email_log` angelegt (Schema siehe Entscheidungen) und bei jedem Versand **und „Als Entwurf exportieren“** beschrieben; Retention 6 Monate + „Verlauf löschen“
+- [x] **Screen 4 `/send`** mit Riverpod-State (`mailDispatcherProvider`), Guards, Statusanzeige
+- [x] **Sammelversand** („alle neuen“) + **Wiederversand** aus `/applications` und `/applications/:id`
+- [x] **E-Mail-Kaskade** (Stufen 1–3) in einen `EmailDiscoveryService` kapseln + Tests (Mock-HTTP)
+- [x] **Option „Erstellen & Versenden“** am Ende des Generierungs-Workflows (Opt-in-Checkbox)
+- [x] **Integrationstests:** Versand-Mock (`MockClient`), Circuit-Breaker-Fall, Dublettenfall
+- [x] **DSGVO/Recht:** Hinweistext im Versand-Screen; Scraping-Ansatz auf Kontaktseiten dokumentieren
 
 ## Entscheidungen (ehem. offene Fragen)
 
@@ -238,6 +238,12 @@ Die Umsetzung erfolgt in **sechs Phasen** (angelehnt an `6-Datenbank-Persistenz.
 - [x] **Retention:** `deleteOlderThan`-Tests (Phase B) + **Cleanup-Job beim App-Start** (6 Monate, `main.dart`) + **„Verlauf löschen“-Button** in den Einstellungen (`/settings`, Audit-Log `deleteAll` mit Bestätigungsdialog)
 - [x] **DSGVO-Hinweistext im Versand-Screen** (Aufbewahrung 6 Monate, löschbar in Einstellungen, Adress-Ermittlung nur Kontaktseite); Scraping-Ansatz (nur Kontaktseite, max. 1 Zusatz-Request) ist in `EmailDiscoveryService`-Doc + Plan dokumentiert
 - [x] **Dabei gefundener Bug behoben:** `MailQueueService._handleFailure` reihte nach einem Fehler das **Original**-Queue-Objekt (weiter `pending`) wieder ein statt des aktualisierten Eintrags → der Retry-Backoff griff nicht und `processQueue` sendete sofort mehrfach erneut (bis Rate-Limit). Jetzt wird der aktualisierte Eintrag (`failed` + `nextTryAt`) wieder eingereiht – durch den 429-Integrationstest aufgedeckt und abgesichert.
+
+### Test-E-Mail an den Absender (Debug) ✅ umgesetzt
+
+**Anfrage:** „Wäre es möglich, einen Button im Versendebildschirm einzufügen, der eine Bewerbung testweise an den Absender (kleitmiandefoot@gmail.com) selbst sendet?“
+
+**Umgesetzt:** Im `/send`-Screen gibt es jetzt einen 🐞-Button in der AppBar (**„Test-E-Mail an Absender senden“**). Er sendet die ausgewählte (bzw. erste versandfähige) Bewerbung inkl. PDF-Anhang, Reply-To und gesetzter CC/BCC testweise an `kleitmiandefoot@gmail.com` — durchläuft dabei den kompletten Versand-Pfad (Template, Queue, Audit-Log, Tageszähler) und zeigt das Ergebnis per Snackbar.
 
 > **Teststand:** Suite gesamt **164 Tests grün** (Erfolgsfall, 429, Tageslimit-Guard, Circuit-Breaker-OPEN, Dubletten-/Wiederholungsfall, Migration v6→v7, Retention, Adress-Kaskade, E-Mail-Service, Dispatcher).
 

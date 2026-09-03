@@ -251,6 +251,17 @@ class _SendScreenState extends ConsumerState<SendScreen> {
           onPressed: () =>
               context.canPop() ? context.pop() : context.go('/applications'),
         ),
+        actions: [
+          // Debug-Test (Phase E/F): sendet eine ausgewählte bzw. die erste
+          // versandfähige Bewerbung testweise an den Absender selbst.
+          IconButton(
+            icon: const Icon(Icons.bug_report_outlined),
+            tooltip: 'Test-E-Mail an Absender senden',
+            onPressed: (_configured && !_busy && sendable.isNotEmpty)
+                ? _sendTestEmail
+                : null,
+          ),
+        ],
       ),
       body: _buildBody(theme, sendable),
       bottomNavigationBar: _configured && sendable.isNotEmpty && !_busy
@@ -858,6 +869,108 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
   String _sanitizeFileName(String name) {
     return name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').replaceAll(' ', '_');
+  }
+
+  Future<void> _sendTestEmail() async {
+    final repo = ref.read(jobRepositoryProvider);
+    final sendable = _sendableApplications(repo.applications);
+    if (sendable.isEmpty) {
+      _showSnack(
+        'Keine versandfähige Bewerbung fuer den Test vorhanden.',
+        isError: true,
+      );
+      return;
+    }
+    // Bevorzugt die ausgewählte Bewerbung, sonst die erste versandfähige.
+    var app = sendable.firstWhere(
+      (a) => _selected.contains(a.id),
+      orElse: () => sendable.first,
+    );
+    if (app.pdfPath == null) {
+      app = sendable.firstWhere((a) => a.pdfPath != null, orElse: () => app);
+    }
+
+    if (!_configured) {
+      _showSnack('Kein Brevo-API-Key hinterlegt.', isError: true);
+      return;
+    }
+
+    final target = EmailService.defaultSenderEmail;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Test-E-Mail senden?'),
+        content: Text(
+          'Sendet die Bewerbung "${app.jobTitle}" bei ${app.company} '
+          'testweise an den Absender selbst:\n\n$target\n\n'
+          '(inkl. PDF-Anhang - prüft den kompletten Versand-Pfad.)',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Test senden'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _busy = true);
+    try {
+      final dispatcher = ref.read(mailDispatcherProvider);
+      final fullName =
+          repo.cvData?.personalData.fullName ?? EmailService.defaultSenderName;
+      await dispatcher.enqueueApplicationEmail(
+        to: target,
+        position: app.jobTitle,
+        company: app.company,
+        fullName: fullName,
+        pdfPath: app.pdfPath,
+        applicationId: '${app.id}',
+        senderName: fullName,
+        senderEmail: EmailService.defaultSenderEmail,
+        // CC/BCC der gewählten Bewerbung mitschicken, falls gesetzt.
+        cc: _selected.contains(app.id)
+            ? _parseAddressList(_draftFor(app).cc.text)
+            : null,
+        bcc: _selected.contains(app.id)
+            ? _parseAddressList(_draftFor(app).bcc.text)
+            : null,
+      );
+      await dispatcher.processQueue();
+      await _refreshLogState();
+
+      if (!mounted) return;
+      final status = _queueLatestStatus(app.id);
+      _showSnack(
+        status == MailStatus.sent
+            ? 'Test-E-Mail an $target gesendet.'
+            : 'Test-E-Mail eingeplant - Versand läuft automatisch.',
+        isError: status == MailStatus.failed,
+      );
+    } catch (e) {
+      _log.severe('Test-E-Mail fehlgeschlagen: $e');
+      if (mounted) {
+        _showSnack('Test-E-Mail fehlgeschlagen: $e', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  MailStatus _queueLatestStatus(int applicationId) {
+    MailQueueEntry? newest;
+    for (final e in ref.read(mailQueueServiceProvider).allEntries) {
+      if (e.applicationId == '$applicationId' &&
+          (newest == null || e.retryCount > newest.retryCount)) {
+        newest = e;
+      }
+    }
+    return newest?.status ?? MailStatus.pending;
   }
 
   Future<void> _discoverAddress(Application app) async {
