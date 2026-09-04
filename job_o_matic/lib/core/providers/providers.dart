@@ -7,8 +7,10 @@ import '../../data/services/api/api_key_service.dart';
 import '../../data/services/api/ba_api_service.dart';
 import '../../data/services/api/job_search_service.dart';
 import '../../data/services/api/adzuna_api_service.dart';
+import '../../data/services/api/serp_api_service.dart';
 import '../../data/services/api/api_cache_service.dart';
 import '../../data/services/api/job_scraper_service.dart';
+import '../../data/services/api/api_connectivity_service.dart';
 import '../../data/services/pdf/template_loader.dart';
 import '../../data/services/pdf/cover_page_generator.dart';
 import '../../data/services/pdf/cover_letter_generator.dart';
@@ -77,6 +79,15 @@ final apiCacheServiceProvider = Provider<ApiCacheService>((ref) {
 });
 
 // ---------------------------------------------------------------------------
+// API Connectivity Check (Jobsuche-Rev, Konnektivitäts-Button in den
+// API-Key-Einstellungen)
+// ---------------------------------------------------------------------------
+
+final apiConnectivityServiceProvider = Provider<ApiConnectivityService>((ref) {
+  return ApiConnectivityService(keyService: ref.read(apiKeyServiceProvider));
+});
+
+// ---------------------------------------------------------------------------
 // BA API Service
 // ---------------------------------------------------------------------------
 
@@ -96,6 +107,16 @@ final adzunaApiServiceProvider = Provider<AdzunaApiService>((ref) {
 });
 
 // ---------------------------------------------------------------------------
+// SerpAPI Service (letzter Fallback in der Jobsuche-Kaskade)
+// ---------------------------------------------------------------------------
+
+final serpApiServiceProvider = Provider<SerpApiService>((ref) {
+  final client = ref.read(apiClientProvider);
+  final keyService = ref.read(apiKeyServiceProvider);
+  return SerpApiService(client: client, keyService: keyService);
+});
+
+// ---------------------------------------------------------------------------
 // Job Scraper Service
 // ---------------------------------------------------------------------------
 
@@ -110,10 +131,12 @@ final jobScraperServiceProvider = Provider<JobScraperService>((ref) {
 final jobSearchServiceProvider = Provider<JobSearchService>((ref) {
   final baService = ref.read(baApiServiceProvider);
   final adzunaService = ref.read(adzunaApiServiceProvider);
+  final serpService = ref.read(serpApiServiceProvider);
   final cacheService = ref.read(apiCacheServiceProvider);
   return JobSearchService(
     baService: baService,
     adzunaService: adzunaService,
+    serpService: serpService,
     cacheService: cacheService,
   );
 });

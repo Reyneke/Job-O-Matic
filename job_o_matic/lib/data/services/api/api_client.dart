@@ -30,7 +30,7 @@ class ApiClient {
         _timeout = timeout ?? defaultTimeout,
         _keyService = keyService;
 
-  /// HTTP-GET mit Retry-Logik.
+  /// HTTP-GET mit Retry-Logik (gemeinsamer Retry-Kern, Jobsuche-Rev Pkt. 4–5).
   Future<http.Response> get(
     Uri uri, {
     String? apiKeyName,
@@ -49,22 +49,53 @@ class ApiClient {
       }
     }
 
+    return _performWithRetry(() => _client.get(uri, headers: headers), uri);
+  }
+
+  /// HTTP-POST mit Retry-Logik (gemeinsamer Retry-Kern, Jobsuche-Rev Pkt. 4–5).
+  Future<http.Response> post(
+    Uri uri, {
+    Map<String, String>? headers,
+    Object? body,
+  }) async {
+    final defaultHeaders = <String, String>{
+      'User-Agent': 'Job-O-Matic/1.0',
+      'Content-Type': 'application/json',
+      ...?headers,
+    };
+
+    return _performWithRetry(
+      () => _client.post(uri, headers: defaultHeaders, body: body),
+      uri,
+    );
+  }
+
+  /// Gemeinsamer Retry-/429-/Timeout-Kern für GET und POST (Jobsuche-Rev 4–5).
+  ///
+  /// - HTTP 429 (Rate-Limit): nach `Retry-After`-Header warten, Fallback
+  ///   `5s × Versuch`.
+  /// - [TimeoutException]: Backoff `2s × Versuch`, dann erneut.
+  /// - Andere Fehler werden sofort weitergereicht (wie zuvor, keine
+  ///   versteckten Retries auf nicht-idempotente/sonstige Fehler).
+  Future<http.Response> _performWithRetry(
+    Future<http.Response> Function() send,
+    Uri uri,
+  ) async {
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        _log.fine('GET ${uri.toString()} (Versuch $attempt/$maxRetries)');
-        final response = await _client
-            .get(uri, headers: headers)
-            .timeout(_timeout);
+        _log.fine('Request ${uri.toString()} (Versuch $attempt/$maxRetries)');
+        final response = await send().timeout(_timeout);
 
-        if (response.statusCode == 429) {
-          final retryAfter = Duration(seconds: 5 * attempt);
-          _log.warning('Rate-Limited. Warte ${retryAfter.inSeconds}s...');
-          await Future.delayed(retryAfter);
-          continue;
+        if (response.statusCode != 429) {
+          _log.fine('Antwort ${response.statusCode} von $uri');
+          return response;
         }
 
-        _log.fine('Antwort ${response.statusCode} von $uri');
-        return response;
+        final wait = _retryAfter(response) ?? Duration(seconds: 5 * attempt);
+        _log.warning(
+            'Rate-Limited (HTTP 429). Warte ${wait.inSeconds}s '
+            '(Versuch $attempt/$maxRetries)...');
+        await Future.delayed(wait);
       } on TimeoutException {
         _log.warning('Timeout für $uri (Versuch $attempt/$maxRetries)');
         if (attempt < maxRetries) {
@@ -81,48 +112,24 @@ class ApiClient {
     );
   }
 
-  /// HTTP-POST mit Retry-Logik.
-  Future<http.Response> post(
-    Uri uri, {
-    Map<String, String>? headers,
-    Object? body,
-  }) async {
-    final defaultHeaders = <String, String>{
-      'User-Agent': 'Job-O-Matic/1.0',
-      'Content-Type': 'application/json',
-      ...?headers,
-    };
+  /// Liest den `Retry-After`-Header eines 429-Response: entweder Sekunden
+  /// oder ein HTTP-Datum. Null, wenn der Header fehlt oder unlesbar ist.
+  Duration? _retryAfter(http.Response response) {
+    final value = response.headers['retry-after'];
+    if (value == null || value.isEmpty) return null;
+    final trimmed = value.trim();
 
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        _log.fine('POST ${uri.toString()} (Versuch $attempt/$maxRetries)');
-        final response = await _client
-            .post(uri, headers: defaultHeaders, body: body)
-            .timeout(_timeout);
-
-        if (response.statusCode == 429) {
-          final retryAfter = Duration(seconds: 5 * attempt);
-          _log.warning('Rate-Limited. Warte ${retryAfter.inSeconds}s...');
-          await Future.delayed(retryAfter);
-          continue;
-        }
-
-        _log.fine('Antwort ${response.statusCode} von $uri');
-        return response;
-      } on TimeoutException {
-        _log.warning('Timeout für $uri (Versuch $attempt/$maxRetries)');
-        if (attempt < maxRetries) {
-          await Future.delayed(Duration(seconds: 2 * attempt));
-        }
-      } catch (e, stack) {
-        _log.severe('Fehler bei API-Anfrage: $e', e, stack);
-        rethrow;
-      }
+    final seconds = int.tryParse(trimmed);
+    if (seconds != null && seconds >= 0) {
+      return Duration(seconds: seconds);
     }
 
-    throw JobApiException(
-      'Maximale Anzahl Versuche ($maxRetries) überschritten',
-    );
+    final date = DateTime.tryParse(trimmed);
+    if (date != null) {
+      final diff = date.difference(DateTime.now());
+      return diff.isNegative ? Duration.zero : diff;
+    }
+    return null;
   }
 
   void dispose() {

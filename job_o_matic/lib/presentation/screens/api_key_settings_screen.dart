@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import '../../core/providers/providers.dart';
 import '../../data/repositories/job_repository.dart';
 import '../../data/services/api/api_key_service.dart';
+import '../../data/services/api/api_connectivity_service.dart';
 
 /// Screen for configuring API keys (Brevo, Adzuna, SerpAPI, etc.).
 ///
@@ -24,6 +25,7 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
   final _baKeyController = TextEditingController();
   final _adzunaAppIdController = TextEditingController();
   final _adzunaApiKeyController = TextEditingController();
+  final _adzunaCountryController = TextEditingController();
   final _serpApiKeyController = TextEditingController();
   final _brevoApiKeyController = TextEditingController();
   final _geminiApiKeyController = TextEditingController();
@@ -32,11 +34,16 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
   bool _isLoading = true;
   bool _obscureText = true;
 
+  /// Konnektivitäts-Test (Jobsuche-Rev, „Verbindung testen“-Button).
+  bool _isTestingConnectivity = false;
+  List<ApiConnectivityResult> _connectivityResults = [];
+
   // Mapping of key names to user-friendly labels
   static const _keyLabels = <String, String>{
     ApiKeyService.baApiKey: 'BA JOBBÖRSE',
     ApiKeyService.adzunaAppId: 'Adzuna App-ID',
     ApiKeyService.adzunaApiKey: 'Adzuna API-Key',
+    ApiKeyService.adzunaCountry: 'Adzuna Land/Markt',
     ApiKeyService.serpApiKey: 'SerpAPI',
     ApiKeyService.brevoApiKey: 'Brevo (E-Mail)',
   };
@@ -83,6 +90,7 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
           await keyService.loadKey(ApiKeyService.adzunaAppId);
       final adzunaApiKey =
           await keyService.loadKey(ApiKeyService.adzunaApiKey);
+      final adzunaCountry = await keyService.loadAdzunaCountry();
       final serpKey = await keyService.loadKey(ApiKeyService.serpApiKey);
       final brevoKey = await keyService.loadKey(ApiKeyService.brevoApiKey);
       final geminiKey = await keyService.loadKey(ApiKeyService.geminiApiKey);
@@ -96,6 +104,7 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
           _baKeyController.text = baKey ?? '';
           _adzunaAppIdController.text = adzunaAppId ?? '';
           _adzunaApiKeyController.text = adzunaApiKey ?? '';
+          _adzunaCountryController.text = adzunaCountry;
           _serpApiKeyController.text = serpKey ?? '';
           _brevoApiKeyController.text = brevoKey ?? '';
           _geminiApiKeyController.text = geminiKey ?? '';
@@ -148,12 +157,102 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
     _baKeyController.dispose();
     _adzunaAppIdController.dispose();
     _adzunaApiKeyController.dispose();
+    _adzunaCountryController.dispose();
     _serpApiKeyController.dispose();
     _brevoApiKeyController.dispose();
     _geminiApiKeyController.dispose();
     _mistralApiKeyController.dispose();
     _groqApiKeyController.dispose();
     super.dispose();
+  }
+
+  /// Speichert das Adzuna-Markt/Land. Ein leerer Wert setzt den Default `de`.
+  Future<void> _saveAdzunaCountry() async {
+    final value = _adzunaCountryController.text.trim().toLowerCase();
+    final effective = value.isEmpty ? 'de' : value;
+    await _saveKey(ApiKeyService.adzunaCountry, effective);
+    if (mounted) {
+      setState(() => _adzunaCountryController.text = effective);
+    }
+  }
+
+  /// Karte für das Adzuna-Markt/Land (2-Buchstaben-Ländercode, z. B. `de`).
+  ///
+  /// Der Wert bestimmt den `{country}`-Pfadanteil der Adzuna-API
+  /// (`/v1/api/jobs/{country}/search/…`). Default ist `de`. Ein kostenloser
+  /// Developer-Key deckt i. d. R. nur den bei der Registrierung gewählten
+  /// „Primary Market“ ab – für andere Märkte schlägt die Anfrage mit
+  /// HTTP 401 `AUTH_FAIL` fehl.
+  Widget _buildCountryField() {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.public,
+                    size: 20, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Adzuna Land/Markt',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Optional',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '2-Buchstaben-Ländercode für die Adzuna-API '
+              '(Standard: "de"). Wählen Sie den Markt, den Ihr API-Key '
+              'abdeckt – z. B. "gb", wenn nur UK freigeschaltet ist.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _adzunaCountryController,
+              decoration: const InputDecoration(
+                hintText: 'z. B. de',
+                border: OutlineInputBorder(),
+                isDense: true,
+                prefixText: 'jobs/…/search',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonalIcon(
+                onPressed: () => _saveAdzunaCountry(),
+                icon: const Icon(Icons.save, size: 18),
+                label: const Text('Speichern'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildKeyField(String keyName) {
@@ -379,6 +478,7 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
                         _buildKeyField(ApiKeyService.baApiKey),
                         _buildKeyField(ApiKeyService.adzunaAppId),
                         _buildKeyField(ApiKeyService.adzunaApiKey),
+                        _buildCountryField(),
                         _buildKeyField(ApiKeyService.serpApiKey),
                         _buildKeyField(ApiKeyService.brevoApiKey),
                         _buildKeyField(ApiKeyService.geminiApiKey),
@@ -407,10 +507,64 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
                         ),
                         const SizedBox(height: 12),
                         FilledButton.icon(
-                          onPressed: null, // TODO: Implement connectivity test
-                          icon: const Icon(Icons.wifi_tethering),
-                          label: const Text('Verbindung testen'),
+                          onPressed: _isTestingConnectivity
+                              ? null
+                              : () => _testConnectivity(),
+                          icon: _isTestingConnectivity
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.wifi_tethering),
+                          label: Text(
+                            _isTestingConnectivity
+                                ? 'Test läuft...'
+                                : 'Verbindung testen',
+                          ),
                         ),
+                        // Ergebnis je Dienst (grün = ok, rot = Fehler,
+                        // orange = nicht konfiguriert)
+                        if (_connectivityResults.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          ..._connectivityResults.map((r) => Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    switch (r.status) {
+                                      ApiConnectivityStatus.ok =>
+                                        Icons.check_circle,
+                                      ApiConnectivityStatus.failed =>
+                                        Icons.cancel,
+                                      ApiConnectivityStatus.notConfigured =>
+                                        Icons.help_outline,
+                                    },
+                                    size: 18,
+                                    color: switch (r.status) {
+                                      ApiConnectivityStatus.ok =>
+                                        Colors.green,
+                                      ApiConnectivityStatus.failed =>
+                                        Colors.red,
+                                      ApiConnectivityStatus.notConfigured =>
+                                        Colors.orange,
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '${r.serviceLabel}: ${r.message}',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                        color: theme
+                                            .colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )),
+                        ],
                       ],
                     ),
                   ),
@@ -488,5 +642,40 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
         ),
       ),
     );
+  }
+/// Prüft die Konnektivität aller konfigurierten API-Dienste (Jobsuche-Rev).
+  ///
+  /// Setzt den „Verbindung testen“-Button während der Prüfung auf deaktiviert
+  /// (Spinner) und zeigt anschließend je Dienst ein grünes/rotes/oranges
+  /// Ergebnis mit Latenz an.
+  Future<void> _testConnectivity() async {
+    setState(() {
+      _isTestingConnectivity = true;
+      _connectivityResults = [];
+    });
+
+    try {
+      final service = ref.read(apiConnectivityServiceProvider);
+      final results = await service.checkAll();
+      if (!mounted) return;
+      setState(() => _connectivityResults = results);
+      _log.info(
+          'Konnektivitäts-Test abgeschlossen: '
+          '${results.where((r) => r.status == ApiConnectivityStatus.ok).length}'
+          '/${results.length} Dienste erreichbar');
+    } catch (e) {
+      _log.warning('Konnektivitäts-Test fehlgeschlagen: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Konnektivitäts-Test fehlgeschlagen: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isTestingConnectivity = false);
+      }
+    }
   }
 }

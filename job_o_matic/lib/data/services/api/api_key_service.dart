@@ -17,6 +17,7 @@ class ApiKeyService {
   static const String baApiKey = 'ba_jobboerse';
   static const String adzunaAppId = 'adzuna_app_id';
   static const String adzunaApiKey = 'adzuna_api_key';
+  static const String adzunaCountry = 'adzuna_country';
   static const String serpApiKey = 'serpapi';
   static const String brevoApiKey = 'brevo';
   static const String geminiApiKey = 'gemini';
@@ -48,6 +49,24 @@ class ApiKeyService {
     final key = await loadKey(name);
     return key != null && key.isNotEmpty;
   }
+
+  /// Lädt den konfigurierten Adzuna-Markt (2-Buchstaben-Ländercode).
+  ///
+  /// Default: `de` (Deutschland) – wie zuvor fest verdrahtet. Der Wert wird
+  /// kleingeschrieben und ohne Leerzeichen zurückgegeben. Ein leerer Wert
+  /// fällt auf `de` zurück.
+  Future<String> loadAdzunaCountry() async {
+    final country = (await loadKey(adzunaCountry))?.trim().toLowerCase() ?? 'de';
+    return country.isEmpty ? 'de' : country;
+  }
+
+  /// Speichert den konfigurierten Adzuna-Markt (kleingeschrieben, getrimmt).
+  ///
+  /// Hinweis: Der kostenlose Adzuna-Developer-Key deckt i. d. R. nur den bei
+  /// der Registrierung gewählten „Primary Market“ ab. Für Deutschland (`de`)
+  /// ist er oft nicht freigeschaltet (dann HTTP 401 `AUTH_FAIL`).
+  Future<void> saveAdzunaCountry(String code) =>
+      saveKey(adzunaCountry, code.trim().toLowerCase());
 
   /// Alle gespeicherten Keys abrufen (für Konfigurationsscreen).
   Future<Map<String, bool>> getKeyStatus() async {

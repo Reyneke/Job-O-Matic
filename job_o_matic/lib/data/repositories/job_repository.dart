@@ -292,8 +292,16 @@ class JobRepository extends ChangeNotifier {
     required String jobTitle,
     required String company,
     String jobUrl = '',
+    String? jobDescription,
+    String? location,
   }) {
-    _createAndInsert(jobTitle: jobTitle, company: company, jobUrl: jobUrl);
+    _createAndInsert(
+      jobTitle: jobTitle,
+      company: company,
+      jobUrl: jobUrl,
+      jobDescription: jobDescription,
+      companyAddress: location,
+    );
     _log.info('Applikation hinzugefügt: $jobTitle bei $company');
     notifyListeners();
   }

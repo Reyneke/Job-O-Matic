@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import '../../data/repositories/job_repository.dart';
+import '../../data/models/job_offer.dart';
 import '../../core/providers/providers.dart';
 
 /// Screen 2: Job search interface.
@@ -24,8 +25,13 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
   bool _isSearching = false;
   String? _searchError;
 
-  final List<Map<String, String>> _searchResults = [];
+  final List<JobOffer> _searchResults = [];
   int _adoptedJobCount = 0;
+
+  /// Pagination (Jobsuche-Rev, Punkt 11).
+  static const int _pageSize = 20;
+  int _currentPage = 1;
+  bool _hasMore = false;
 
   @override
   void dispose() {
@@ -34,7 +40,7 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
     super.dispose();
   }
 
-  Future<void> _performSearch() async {
+  Future<void> _performSearch({int page = 1, bool append = false}) async {
     final jobDesc = _jobController.text.trim();
     final location = _locationController.text.trim();
 
@@ -53,7 +59,8 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
       _searchError = null;
     });
     _log.info(
-        'Jobsuche gestartet: "$jobDesc", Ort: "$location", Umkreis: ${_radius}km');
+        'Jobsuche gestartet (Seite $page): "$jobDesc", Ort: "$location", '
+        'Umkreis: ${_radius.round()}km');
 
     try {
       final searchService = ref.read(jobSearchServiceProvider);
@@ -61,22 +68,26 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
         query: jobDesc,
         location: location.isNotEmpty ? location : null,
         radius: _radius.round(),
+        page: page,
+        size: _pageSize,
       );
 
       if (!context.mounted) return;
 
       setState(() {
-        _searchResults.clear();
-        _searchResults.addAll(result.jobs.map((job) => {
-              'title': job.title,
-              'company': job.company,
-              'location': job.location ?? (location.isNotEmpty ? location : 'Unbekannt'),
-              'id': job.id,
-            }));
+        if (!append) {
+          _searchResults.clear();
+        }
+        _searchResults.addAll(result.jobs);
+        _currentPage = page;
+        // Mehr laden, solange eine volle Seite zurückkam (Punkt 11).
+        _hasMore = result.jobs.length >= _pageSize;
         _searchError = result.errorMessage;
         _isSearching = false;
       });
-      _log.info('Jobsuche abgeschlossen: ${result.jobs.length} Ergebnisse');
+      _log.info(
+          'Jobsuche abgeschlossen: ${result.jobs.length} Ergebnisse '
+          '(Seite $page)');
 
       if (_searchError != null && _searchResults.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -103,14 +114,19 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
     }
   }
 
-  void _adoptResults(List<Map<String, String>> jobs,
+  void _adoptResults(List<JobOffer> jobs,
       {bool navigateToApplications = false}) {
     final repo = ref.read(jobRepositoryProvider);
     for (final job in jobs) {
       repo.addApplication(
-        jobTitle: job['title'] ?? 'Unbekannte Stelle',
-        company: job['company'] ?? 'Unbekanntes Unternehmen',
-        jobUrl: '',
+        jobTitle: job.title.isEmpty ? 'Unbekannte Stelle' : job.title,
+        company:
+            job.company.isEmpty ? 'Unbekanntes Unternehmen' : job.company,
+        // Jobsuche-Rev Punkte 1–2: URL, Beschreibung und Ort durchreichen
+        // statt zu verwerfen.
+        jobUrl: job.url,
+        jobDescription: job.description,
+        location: job.location,
       );
     }
     setState(() => _adoptedJobCount += jobs.length);
@@ -201,7 +217,7 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
 
             // Search button
             FilledButton.icon(
-              onPressed: _isSearching ? null : _performSearch,
+              onPressed: _isSearching ? null : () => _performSearch(),
               icon: _isSearching
                   ? const SizedBox(
                       width: 18,
@@ -254,9 +270,12 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       leading: const Icon(Icons.business_center),
-                      title: Text(result['title']!),
-                      subtitle:
-                          Text('${result['company']} – ${result['location']}'),
+                      title: Text(result.title),
+                      subtitle: Text([
+                        if (result.company.isNotEmpty) result.company,
+                        if (result.location != null) result.location!,
+                        if (result.salaryRange != null) result.salaryRange!,
+                      ].join(' – ')),
                       trailing: FilledButton.tonalIcon(
                         onPressed: () => _adoptResults([result]),
                         icon: const Icon(Icons.add, size: 18),
@@ -272,6 +291,18 @@ class _JobSearchScreenState extends ConsumerState<JobSearchScreen> {
                 icon: const Icon(Icons.download_done),
                 label: const Text('Alle übernehmen & weiter'),
               ),
+              // Weitere Ergebnisse laden (Jobsuche-Rev, Punkt 11)
+              if (_hasMore && !_isSearching) ...[
+                const SizedBox(height: 12),
+                Center(
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        _performSearch(page: _currentPage + 1, append: true),
+                    icon: const Icon(Icons.expand_more),
+                    label: const Text('Weitere Ergebnisse laden'),
+                  ),
+                ),
+              ],
               // Weiter-Button, wenn bereits Jobs übernommen wurden
               if (_adoptedJobCount > 0) ...[
                 const SizedBox(height: 16),

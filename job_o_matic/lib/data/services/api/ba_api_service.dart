@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:logging/logging.dart';
 import 'api_client.dart';
+import 'job_offer_mapper.dart';
 import '../../models/job_offer.dart';
 
 /// Service für die Bundesagentur für Arbeit (JOBBÖRSE-API).
@@ -127,32 +128,25 @@ class BaApiService {
   }
 
   /// Formatiert einen Gehaltswert mit Tausender-Trennzeichen.
+  /// Delegiert an den gemeinsamen [JobOfferMapper] (Jobsuche-Rev, Punkt 8).
   String _formatSalary(dynamic value) {
     if (value is num) {
-      return value.toStringAsFixed(0).replaceAllMapped(
-            RegExp(r'(\d)(?=(\d{3})+$)'),
-            (m) => '${m[1]}.',
-          );
+      return JobOfferMapper.formatSalaryAmount(value);
     }
     return value?.toString() ?? '?';
   }
 
-  /// Ermittelt die Beschäftigungsart aus `arbeitszeitVollzeit`.
+  /// Ermittelt die Beschäftigungsart aus `arbeitszeitVollzeit`/`Teilzeit`.
   EmploymentType? _parseEmploymentType(Map<String, dynamic> map) {
-    final isFullTime = map['arbeitszeitVollzeit'] == true;
-    final isPartTime = map['arbeitszeitTeilzeit'] == true;
-    if (isFullTime && isPartTime) return EmploymentType.both;
-    if (isFullTime) return EmploymentType.fullTime;
-    if (isPartTime) return EmploymentType.partTime;
-    return null;
+    return JobOfferMapper.employmentTypeFromBooleans(
+      isFullTime: map['arbeitszeitVollzeit'] == true,
+      isPartTime: map['arbeitszeitTeilzeit'] == true,
+    );
   }
 
   String _buildJobUrl(String refnr) {
     return 'https://www.arbeitsagentur.de/jobsuche/job/$refnr';
   }
 
-  DateTime? _parseDate(String? dateStr) {
-    if (dateStr == null || dateStr.isEmpty) return null;
-    return DateTime.tryParse(dateStr);
-  }
+  DateTime? _parseDate(String? dateStr) => JobOfferMapper.parseDate(dateStr);
 }

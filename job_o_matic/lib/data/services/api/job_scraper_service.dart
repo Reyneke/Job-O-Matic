@@ -3,6 +3,7 @@ import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
 import 'package:logging/logging.dart';
 import '../../models/job_offer.dart';
+import 'stable_hash.dart';
 import 'job_title_cleaner.dart';
 
 /// Ergebnis einer Job-Extraktion aus einer Stellen-URL.
@@ -211,10 +212,13 @@ class JobScraperService {
   }
 
   /// Generiert eine eindeutige ID für einen gescrapten Job.
+  ///
+  /// Nutzt einen deterministischen FNV-1a-Hash statt `hashCode`, damit die
+  /// ID über App-Läufe und Plattformen stabil bleibt und Dubletten vermieden
+  /// werden (Jobsuche-Rev, Punkt 9).
   String _generateId(String url, String title) {
-    // Kombiniere URL-Hash und Titel für eindeutige ID
-    final hash = url.hashCode ^ title.hashCode;
-    return 'scrape_${hash.abs()}';
+    final hash = fnv1a32('$url|$title');
+    return 'scrape_$hash';
   }
 
   void dispose() {

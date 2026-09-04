@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:logging/logging.dart';
 import 'api_client.dart';
 import 'api_key_service.dart';
+import 'job_offer_mapper.dart';
 import '../../models/job_offer.dart';
 
 /// Service für die Adzuna-API.
@@ -20,7 +21,6 @@ class AdzunaApiService {
   final ApiKeyService _keyService;
 
   static const _baseUrl = 'api.adzuna.com';
-  static const _country = 'de';
 
   AdzunaApiService({
     required ApiClient client,
@@ -47,6 +47,10 @@ class AdzunaApiService {
       );
     }
 
+    // Markt/Land pro Request auflösen, damit eine Änderung in den
+    // Einstellungen sofort wirkt (kein Neustart/Neukonstruktion nötig).
+    final country = await _keyService.loadAdzunaCountry();
+
     final params = <String, String>{
       'app_id': appId,
       'app_key': apiKey,
@@ -68,11 +72,20 @@ class AdzunaApiService {
 
     final uri = Uri.https(
       _baseUrl,
-      '/v1/api/jobs/$_country/search/$page',
+      '/v1/api/jobs/$country/search/$page',
       params,
     );
 
     final response = await _client.get(uri);
+
+    if (response.statusCode == 401) {
+      throw JobApiException(
+        'Adzuna: Authorisation failed (AUTH_FAIL). App-ID/API-Key prüfen oder '
+        'Markt „$country“ ist für deinen API-Key nicht freigeschaltet.',
+        statusCode: 401,
+        details: response.body,
+      );
+    }
 
     if (response.statusCode != 200) {
       throw JobApiException(
@@ -106,7 +119,10 @@ class AdzunaApiService {
           url: (map['redirect_url'] ?? '') as String,
           salaryRange: _parseSalary(map),
           employmentType: _parseEmploymentType(map),
-          publishedAt: _parseDate(map['created'] as String?),
+          workModel: JobOfferMapper.workModelFromDescription(
+            map['description'] as String?,
+          ),
+          publishedAt: JobOfferMapper.parseDate(map['created'] as String?),
           source: 'adzuna',
         ));
       } catch (e) {
@@ -121,27 +137,16 @@ class AdzunaApiService {
     final salaryMin = map['salary_min'];
     final salaryMax = map['salary_max'];
     if (salaryMin == null && salaryMax == null) return null;
-    return '${salaryMin?.toStringAsFixed(0) ?? '?'} - '
-        '${salaryMax?.toStringAsFixed(0) ?? '?'} '
+
+    String format(dynamic v) => v is num
+        ? JobOfferMapper.formatSalaryAmount(v)
+        : (v?.toString() ?? '?');
+    return '${format(salaryMin)} - ${format(salaryMax)} '
         '${map['salary_currency'] ?? 'EUR'}';
   }
 
-  EmploymentType? _parseEmploymentType(Map<String, dynamic> map) {
-    const contractTypes = {
-      'permanent': EmploymentType.fullTime,
-      'contract': EmploymentType.fullTime,
-      'part_time': EmploymentType.partTime,
-      'full_time': EmploymentType.fullTime,
-    };
-    final contract = map['contract_type'] as String?;
-    if (contract != null) {
-      return contractTypes[contract.toLowerCase()];
-    }
-    return null;
-  }
-
-  DateTime? _parseDate(String? dateStr) {
-    if (dateStr == null || dateStr.isEmpty) return null;
-    return DateTime.tryParse(dateStr);
-  }
+  EmploymentType? _parseEmploymentType(Map<String, dynamic> map) =>
+      JobOfferMapper.employmentTypeFromContract(
+        map['contract_type'] as String?,
+      );
 }
