@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'api_key_service.dart';
@@ -44,6 +45,9 @@ class ApiConnectivityService {
 
   static const String _baSearchPath = '/jobboerse/jobsuche-service/pc/v6/jobs';
 
+  static const String _careerjetBaseUrl = 'search.api.careerjet.net';
+  static const String _careerjetQueryPath = '/v4/query';
+
   ApiConnectivityService({
     required ApiKeyService keyService,
     http.Client? client,
@@ -58,13 +62,14 @@ class ApiConnectivityService {
   Future<String?> _loadKey(String name) =>
       _keyLoader != null ? _keyLoader(name) : _keyService.loadKey(name);
 
-  /// Führt alle Checks aus. Reihenfolge: BA → Adzuna → Brevo →
+  /// Führt alle Checks aus. Reihenfolge: BA → Adzuna → Careerjet → Brevo →
   /// Gemini → Mistral → Groq. SerpAPI ist bewusst nicht enthalten, da es
   /// kostenpflichtig ist und die echte Jobsuche nur als letzter Fallback dient.
   Future<List<ApiConnectivityResult>> checkAll() async {
     final results = <ApiConnectivityResult>[];
     results.add(await _checkBa());
     results.add(await _checkAdzuna());
+    results.add(await _checkCareerjet());
     results.add(await _checkBrevo());
     results.add(await _checkGemini());
     results.add(await _checkMistral());
@@ -131,6 +136,36 @@ class ApiConnectivityService {
           'results_per_page': '1',
         },
       ),
+    );
+  }
+
+  Future<ApiConnectivityResult> _checkCareerjet() async {
+    final key = await _loadKey(ApiKeyService.careerjetApiKey);
+    if (key == null || key.isEmpty) {
+      return ApiConnectivityResult(
+        serviceLabel: 'Careerjet',
+        status: ApiConnectivityStatus.notConfigured,
+        message: 'API-Key fehlt.',
+      );
+    }
+
+    // Basic Auth: base64("key:"). user_ip/user_agent sind Pflicht-Parameter.
+    final auth = 'Basic ${base64Encode(utf8.encode('$key:'))}';
+    return _check(
+      label: 'Careerjet',
+      configured: true,
+      uri: Uri.https(
+        _careerjetBaseUrl,
+        _careerjetQueryPath,
+        {
+          'locale_code': 'de_DE',
+          'keywords': 'Flutter',
+          'pagesize': '1',
+          'user_ip': '127.0.0.1',
+          'user_agent': 'Job-O-Matic/1.0',
+        },
+      ),
+      headers: {'Authorization': auth, 'Accept': 'application/json'},
     );
   }
 

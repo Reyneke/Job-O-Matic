@@ -32,6 +32,40 @@ void main() {
       expect(firstEmailAddressIn('Bewerbung an jobs(at)firma.de'), isNull);
       expect(firstEmailAddressIn(null), isNull);
     });
+
+    test('firstEmailAddressRobust loest Anti-Spam-Schreibweisen auf', () {
+      expect(
+        firstEmailAddressRobust('Bewerbung an bewerbung (at) firma.de'),
+        'bewerbung@firma.de',
+      );
+      expect(
+        firstEmailAddressRobust('Kontakt: bewerbung[at]firma.de'),
+        'bewerbung@firma.de',
+      );
+      expect(
+        firstEmailAddressRobust('post (at) firma (dot) de senden'),
+        'post@firma.de',
+      );
+    });
+
+    test('firstEmailAddressRobust dekodiert HTML-Entities', () {
+      expect(
+        firstEmailAddressRobust('schreiben Sie an hr&#64;firma&#46;de'),
+        'hr@firma.de',
+      );
+    });
+
+    test('firstEmailAddressRobust loest Zeilenumbruch ums @ auf', () {
+      expect(
+        firstEmailAddressRobust('Kontakt: hr@\nfirma.de'),
+        'hr@firma.de',
+      );
+    });
+
+    test('firstEmailAddressRobust findet mailto-Text und liefert sonst null', () {
+      expect(firstEmailAddressRobust('mailto:hr@firma.de'), 'hr@firma.de');
+      expect(firstEmailAddressRobust('Keine Adresse vorhanden'), isNull);
+    });
   });
 
   group('EmailDiscoveryService - Stufe 1 (lokale Daten)', () {
@@ -225,6 +259,52 @@ void main() {
       final result = await service.discover(jobUrl: 'https://firma.de/jobs/1');
       expect(result.found, isFalse);
       expect(result.source, EmailDiscoverySource.none);
+    });
+  });
+
+  group('EmailDiscoveryService - Stufe 1 robust (offline)', () {
+    test('loest obfuskierte Adresse im company-Feld ohne HTTP auf', () async {
+      var requests = 0;
+      final service = EmailDiscoveryService(
+        client: MockClient((_) async {
+          requests++;
+          return http.Response('nicht erreichbar', 500);
+        }),
+      );
+      addTearDown(service.dispose);
+
+      final result = await service.discover(
+        company: 'Bewerbung an jobs[at]musterfirma.de',
+        companyAddress: 'Musterweg 1',
+        jobDescription: 'Keine direkte Adresse im Text.',
+        jobUrl: 'https://example.com/stelle/2',
+      );
+
+      expect(result.found, isTrue);
+      expect(result.email, 'jobs@musterfirma.de');
+      expect(result.source, EmailDiscoverySource.storedData);
+      expect(requests, 0);
+    });
+
+    test('loest HTML-Entity-Adresse in jobDescription ohne HTTP auf', () async {
+      var requests = 0;
+      final service = EmailDiscoveryService(
+        client: MockClient((_) async {
+          requests++;
+          return http.Response('nicht erreichbar', 500);
+        }),
+      );
+      addTearDown(service.dispose);
+
+      final result = await service.discover(
+        jobDescription: 'Kontakt: hr&#64;firma&#46;de fuer Rueckfragen.',
+        jobUrl: 'https://example.com/stelle/3',
+      );
+
+      expect(result.found, isTrue);
+      expect(result.email, 'hr@firma.de');
+      expect(result.source, EmailDiscoverySource.storedData);
+      expect(requests, 0);
     });
   });
 }

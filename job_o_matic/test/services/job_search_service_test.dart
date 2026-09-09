@@ -8,6 +8,7 @@ import 'package:job_o_matic/data/services/api/api_client.dart';
 import 'package:job_o_matic/data/services/api/api_key_service.dart';
 import 'package:job_o_matic/data/services/api/ba_api_service.dart';
 import 'package:job_o_matic/data/services/api/serp_api_service.dart';
+import 'package:job_o_matic/data/services/api/careerjet_api_service.dart';
 import 'package:job_o_matic/data/services/api/job_search_service.dart';
 import 'package:logging/logging.dart';
 
@@ -163,5 +164,148 @@ void main() {
       expect(result.jobs.first.source, 'serpapi');
       expect(result.jobs.first.title, 'Flutter Developer (SerpAPI)');
     });
+
+    test('fills the threshold with Careerjet first (SerpAPI not called)',
+        () async {
+      int serpCalls = 0;
+      final mock = MockClient((request) async {
+        if (request.url.host == 'search.api.careerjet.net') {
+          // Careerjet liefert 10 Jobs → Schwelle erreicht, SerpAPI darf nicht
+          // mehr angefragt werden (Careerjet steht VOR SerpAPI in der Kaskade).
+          final jobs = List.generate(10, (i) => {
+                'title': 'CJ Job $i',
+                'company': 'CJFirma',
+                'url': 'https://jobviewtrack.com/cj-$i',
+              });
+          return http.Response(
+            jsonEncode({'type': 'JOBS', 'hits': 10, 'jobs': jobs}),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        if (request.url.host == 'serpapi.com') {
+          serpCalls++;
+          return http.Response(
+            jsonEncode({
+              'jobs_results': [
+                {
+                  'job_id': 's-1',
+                  'title': 'Serp Job',
+                  'company_name': 'SerpFirma',
+                  'share_link': 'https://serp.example/job/s-1',
+                }
+              ],
+            }),
+            200,
+          );
+        }
+        // BA liefert keine Ergebnisse.
+        return http.Response(
+          jsonEncode({
+            'ergebnisliste': <Object>[],
+            'maxErgebnisse': 0,
+            'page': 1,
+            'size': 20,
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final apiClient = ApiClient(
+        logger: Logger('Test'),
+        keyService: ApiKeyService(),
+        client: mock,
+      );
+      final careerjet = CareerjetApiService(
+        client: apiClient,
+        keyService: ApiKeyService(),
+        ipClient: MockClient(
+            (request) async => http.Response(jsonEncode({'ip': '9.9.9.9'}), 200)),
+        keyLoader: () async => 'careerjet-key',
+      );
+      final serp = SerpApiService(
+        client: apiClient,
+        keyService: ApiKeyService(),
+        keyLoader: () async => 'serp-key',
+      );
+      service = JobSearchService(
+        baService: BaApiService(client: apiClient),
+        careerjetService: careerjet,
+        serpService: serp,
+      );
+
+      final result = await service.searchJobs(query: 'Flutter');
+
+      expect(result.jobs, hasLength(10));
+      expect(result.jobs.every((j) => j.source == 'careerjet'), isTrue);
+      expect(serpCalls, 0);
+    });
+
+    test('keeps SerpAPI as last fallback when Careerjet is empty', () async {
+      final mock = MockClient((request) async {
+        if (request.url.host == 'search.api.careerjet.net') {
+          return http.Response(
+            jsonEncode({'type': 'JOBS', 'hits': 0, 'jobs': <Object>[]}),
+            200,
+          );
+        }
+        if (request.url.host == 'serpapi.com') {
+          return http.Response(
+            jsonEncode({
+              'jobs_results': [
+                {
+                  'job_id': 's-1',
+                  'title': 'Serp Job (Fallback)',
+                  'company_name': 'SerpFirma',
+                  'share_link': 'https://serp.example/job/s-1',
+                }
+              ],
+            }),
+            200,
+          );
+        }
+        // BA liefert keine Ergebnisse.
+        return http.Response(
+          jsonEncode({
+            'ergebnisliste': <Object>[],
+            'maxErgebnisse': 0,
+            'page': 1,
+            'size': 20,
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final apiClient = ApiClient(
+        logger: Logger('Test'),
+        keyService: ApiKeyService(),
+        client: mock,
+      );
+      final careerjet = CareerjetApiService(
+        client: apiClient,
+        keyService: ApiKeyService(),
+        ipClient: MockClient(
+            (request) async => http.Response(jsonEncode({'ip': '9.9.9.9'}), 200)),
+        keyLoader: () async => 'careerjet-key',
+      );
+      final serp = SerpApiService(
+        client: apiClient,
+        keyService: ApiKeyService(),
+        keyLoader: () async => 'serp-key',
+      );
+      service = JobSearchService(
+        baService: BaApiService(client: apiClient),
+        careerjetService: careerjet,
+        serpService: serp,
+      );
+
+      final result = await service.searchJobs(query: 'Flutter');
+
+      expect(result.jobs, hasLength(1));
+      expect(result.jobs.first.source, 'serpapi');
+    });
+
   });
 }

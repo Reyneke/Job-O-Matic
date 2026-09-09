@@ -5,9 +5,11 @@ import '../../data/repositories/database_repository.dart';
 import '../../data/services/api/api_client.dart';
 import '../../data/services/api/api_key_service.dart';
 import '../../data/services/api/ba_api_service.dart';
+import '../../data/services/api/ba_contact_resolver.dart';
 import '../../data/services/api/job_search_service.dart';
 import '../../data/services/api/adzuna_api_service.dart';
 import '../../data/services/api/serp_api_service.dart';
+import '../../data/services/api/careerjet_api_service.dart';
 import '../../data/services/api/api_cache_service.dart';
 import '../../data/services/api/job_scraper_service.dart';
 import '../../data/services/api/api_connectivity_service.dart';
@@ -21,6 +23,7 @@ import '../../data/services/pdf_cleanup_service.dart';
 import '../../data/services/email/email_service.dart';
 import '../../data/services/email/email_template_service.dart';
 import '../../data/services/email/email_discovery_service.dart';
+import '../../data/services/email/contact_enrichment_service.dart';
 import '../../data/services/email/mail_queue_service.dart';
 import '../../data/services/email/mail_queue_store.dart';
 import '../../data/services/email/circuit_breaker.dart';
@@ -96,6 +99,18 @@ final baApiServiceProvider = Provider<BaApiService>((ref) {
   return BaApiService(client: client);
 });
 
+final baContactResolverProvider = Provider<BaContactResolver>((ref) {
+  // doc/plan/16-Jobsuche-BA.md: legitime Kontakt-Kaskade zu BA-Anzeigen
+  // (jobdetails-REST → Beschreibungstext → externe Anzeige/Arbeitgeber-Website
+  // → manueller Fallback). Nutzt denselben EmailDiscoveryService wie der
+  // Versand-Screen, aber nur für Nicht-BA-Hosts (arbeitsagentur.de ist intern
+  // gesperrt – keine HTML-Seiten-Anfrage).
+  return BaContactResolver(
+    baService: ref.read(baApiServiceProvider),
+    discovery: ref.read(emailDiscoveryServiceProvider),
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Adzuna API Service
 // ---------------------------------------------------------------------------
@@ -117,6 +132,16 @@ final serpApiServiceProvider = Provider<SerpApiService>((ref) {
 });
 
 // ---------------------------------------------------------------------------
+// Careerjet API Service (kostenloser Fallback vor SerpAPI in der Kaskade)
+// ---------------------------------------------------------------------------
+
+final careerjetApiServiceProvider = Provider<CareerjetApiService>((ref) {
+  final client = ref.read(apiClientProvider);
+  final keyService = ref.read(apiKeyServiceProvider);
+  return CareerjetApiService(client: client, keyService: keyService);
+});
+
+// ---------------------------------------------------------------------------
 // Job Scraper Service
 // ---------------------------------------------------------------------------
 
@@ -131,11 +156,13 @@ final jobScraperServiceProvider = Provider<JobScraperService>((ref) {
 final jobSearchServiceProvider = Provider<JobSearchService>((ref) {
   final baService = ref.read(baApiServiceProvider);
   final adzunaService = ref.read(adzunaApiServiceProvider);
+  final careerjetService = ref.read(careerjetApiServiceProvider);
   final serpService = ref.read(serpApiServiceProvider);
   final cacheService = ref.read(apiCacheServiceProvider);
   return JobSearchService(
     baService: baService,
     adzunaService: adzunaService,
+    careerjetService: careerjetService,
     serpService: serpService,
     cacheService: cacheService,
   );
@@ -204,6 +231,16 @@ final emailDiscoveryServiceProvider = Provider<EmailDiscoveryService>((ref) {
   // Phase C: E-Mail-Adress-Ermittlung (Kaskade Stufen 1–3). Nutzt einen
   // eigenen http.Client mit Timeout; Stufe 4 (manuell) liegt in der UI.
   return EmailDiscoveryService();
+});
+
+/// Batch-Kontakt-Anreicherung über die vorhandene Kaskade (doc/plan/17).
+/// Wiederverwendet `BaContactResolver` + `EmailDiscoveryService`.
+final contactEnrichmentServiceProvider =
+    Provider<ContactEnrichmentService>((ref) {
+  return ContactEnrichmentService(
+    baResolver: ref.read(baContactResolverProvider),
+    discovery: ref.read(emailDiscoveryServiceProvider),
+  );
 });
 
 final circuitBreakerProvider = Provider<CircuitBreaker>((ref) {

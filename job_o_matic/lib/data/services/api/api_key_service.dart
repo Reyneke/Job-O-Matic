@@ -19,6 +19,7 @@ class ApiKeyService {
   static const String adzunaApiKey = 'adzuna_api_key';
   static const String adzunaCountry = 'adzuna_country';
   static const String serpApiKey = 'serpapi';
+  static const String careerjetApiKey = 'careerjet';
   static const String brevoApiKey = 'brevo';
   static const String geminiApiKey = 'gemini';
   static const String mistralApiKey = 'mistral';
@@ -75,6 +76,7 @@ class ApiKeyService {
       adzunaAppId,
       adzunaApiKey,
       serpApiKey,
+      careerjetApiKey,
       brevoApiKey,
       geminiApiKey,
       mistralApiKey,

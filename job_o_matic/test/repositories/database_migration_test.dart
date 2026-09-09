@@ -73,6 +73,71 @@ void main() {
     );
   }
 
+  /// Legt eine Datenbank im (vereinfachten) v7-Zustand an: `applications`
+  /// inkl. `email_status`/`email_address`, `mail_queue` inkl. Sender-/CC/BCC-
+  /// Spalten und `sent_email_log` – aber bewusst **ohne** die v8-Spalten.
+  Future<Database> openV7(String path) {
+    return databaseFactory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 7,
+        onCreate: (db, version) async {
+          await db.execute('''
+            CREATE TABLE applications (
+              id               INTEGER PRIMARY KEY AUTOINCREMENT,
+              job_title        TEXT    NOT NULL DEFAULT 'Unbekannte Stelle',
+              company          TEXT    NOT NULL DEFAULT 'Unbekanntes Unternehmen',
+              company_address  TEXT,
+              job_url          TEXT    NOT NULL,
+              job_description  TEXT,
+              status           TEXT    NOT NULL DEFAULT 'queued',
+              pdf_path         TEXT,
+              error_message    TEXT,
+              created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+              completed_at     TEXT,
+              cover_letter_text TEXT,
+              email_status     TEXT    NOT NULL DEFAULT 'new',
+              email_address    TEXT
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE mail_queue (
+              id              INTEGER PRIMARY KEY AUTOINCREMENT,
+              uuid            TEXT    NOT NULL UNIQUE,
+              recipient_email TEXT    NOT NULL,
+              subject         TEXT    NOT NULL,
+              body            TEXT    NOT NULL,
+              pdf_path        TEXT,
+              application_id  INTEGER,
+              sender_name     TEXT,
+              sender_email    TEXT,
+              cc              TEXT,
+              bcc             TEXT,
+              status          TEXT    NOT NULL DEFAULT 'pending',
+              retry_count     INTEGER NOT NULL DEFAULT 0,
+              last_try_at     TEXT,
+              next_try_at     TEXT,
+              error_message   TEXT,
+              created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE sent_email_log (
+              id               INTEGER PRIMARY KEY AUTOINCREMENT,
+              application_id   INTEGER NOT NULL REFERENCES applications(id),
+              recipient_email  TEXT    NOT NULL,
+              subject          TEXT    NOT NULL,
+              message_id       TEXT,
+              status           TEXT    NOT NULL,
+              error_message    TEXT,
+              sent_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+          ''');
+        },
+      ),
+    );
+  }
+
   test(
     'v6 -> v7 erhaelt Daten und ergaenzt Spalten + sent_email_log',
     () async {
@@ -196,6 +261,69 @@ void main() {
       );
       expect(deleted, 1);
       await db7.close();
+    },
+  );
+
+  test(
+    'v7 -> v8 erhaelt Daten und ergaenzt Kontakt-Metadaten',
+    () async {
+      final dbHelper = DatabaseHelper();
+      final path = '${tmpDir.path}/job_o_matic_v8.db';
+
+      // v7-Datei anlegen und eine Zeile inkl. email_address einfügen.
+      final db7 = await openV7(path);
+      final appId = await db7.insert('applications', {
+        'job_title': 'Flutter-Entwickler',
+        'company': 'Firma GmbH',
+        'job_url': 'https://example.com/job/1',
+        'status': 'completed',
+        'email_status': 'sent',
+        'email_address': 'hr@firma.de',
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      await db7.close();
+
+      // Auf v8 migrieren (echte Migrationslogik).
+      final db8 = await databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 8,
+          onUpgrade: (db, oldVersion, newVersion) =>
+              dbHelper.runMigrationForTesting(db, oldVersion, newVersion),
+        ),
+      );
+
+      // Bestehende Daten inkl. email_address bleiben erhalten.
+      final apps = await db8.query('applications');
+      expect(apps, hasLength(1));
+      expect(apps.single['job_title'], 'Flutter-Entwickler');
+      expect(apps.single['email_address'], 'hr@firma.de');
+
+      // Neue Spalten vorhanden.
+      final appCols = (await db8.rawQuery(
+        'PRAGMA table_info(applications)',
+      )).map((r) => r['name']).toSet();
+      expect(appCols, contains('email_source'));
+      expect(appCols, contains('email_evidence_url'));
+      expect(appCols, contains('contact_person'));
+
+      // Neuer Schreibpfad: Spalten sind beschreibbar (doc/plan/17, DB v8).
+      await db8.update(
+        'applications',
+        {
+          'email_source': 'employerWebsite',
+          'email_evidence_url': 'https://firma.de/impressum',
+          'contact_person': 'Frau Muster',
+        },
+        where: 'id = ?',
+        whereArgs: [appId],
+      );
+      final updated = (await db8.query('applications')).single;
+      expect(updated['email_source'], 'employerWebsite');
+      expect(updated['email_evidence_url'], 'https://firma.de/impressum');
+      expect(updated['contact_person'], 'Frau Muster');
+
+      await db8.close();
     },
   );
 }

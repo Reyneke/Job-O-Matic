@@ -116,7 +116,181 @@ void main() {
         throwsA(isA<JobApiException>()),
       );
     });
+
+    test('base64EncodeRefnr kodiert eine Referenznummer URL-sicher', () {
+      expect(
+        BaApiService.base64EncodeRefnr('10001-1002716922-S'),
+        'MTAwMDEtMTAwMjcxNjkyMi1T',
+      );
+    });
+
+    test('fetchJobDetails parst die jobdetails-Antwort', () async {
+      mockClient = MockClient((request) async {
+        expect(request.url.path, contains('/jobdetails/'));
+        return http.Response(
+          jsonEncode(_sampleDetailsResponse()),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final apiClient = ApiClient(
+        logger: Logger('Test'),
+        keyService: ApiKeyService(),
+        client: mockClient,
+      );
+      service = BaApiService(client: apiClient);
+
+      final details = await service.fetchJobDetails('12265-487930_JB5205113-S');
+
+      expect(details.title, 'Ingenieur (m/w/d) Testautomatisierung Flutter und Dart');
+      expect(details.company, 'FERCHAU GmbH Niederlassung Mannheim');
+      expect(details.description, contains('Wir freuen uns auf Ihre Bewerbung'));
+      expect(details.externalUrl, isNull);
+      expect(details.primaryAddress, 'Jüdenstr. 31, 68163 Mannheim');
+    });
+
+    test('fetchJobDetails wirft JobApiException bei HTTP-Fehler', () async {
+      mockClient = MockClient((request) async => http.Response('error', 500));
+
+      final apiClient = ApiClient(
+        logger: Logger('Test'),
+        keyService: ApiKeyService(),
+        client: mockClient,
+      );
+      service = BaApiService(client: apiClient);
+
+      expect(
+        () => service.fetchJobDetails('12265-487930_JB5205113-S'),
+        throwsA(isA<JobApiException>()),
+      );
+    });
+
+    test('marketStats zählt externe vs. interne Anzeigen (externeUrl)', () async {
+      final items = [
+        _sampleSearchItem(),
+        _sampleSearchItem()..['externeUrl'] = 'https://www.get-in-it.de/job/1',
+        _sampleSearchItem()..['externeUrl'] = 'https://firma.de/job/2',
+      ];
+      mockClient = MockClient((request) async => http.Response(
+            jsonEncode({'ergebnisliste': items}),
+            200,
+            headers: {'content-type': 'application/json'},
+          ));
+      final apiClient = ApiClient(
+        logger: Logger('Test'),
+        keyService: ApiKeyService(),
+        client: mockClient,
+      );
+      service = BaApiService(client: apiClient);
+
+      final jobs = await service.search(query: 'Flutter');
+      expect(jobs, hasLength(3));
+
+      final stats = service.marketStats;
+      expect(stats.searchedOffers, 3);
+      expect(stats.externalOffers, 2);
+      expect(stats.internalOffers, 1);
+      expect(stats.externalShare, closeTo(2 / 3, 0.0001));
+    });
+
+    test('erkennt auch externeURL/allianzpartnerName in Such-Treffern', () async {
+      final items = [
+        _sampleSearchItem()..['externeURL'] = 'https://x.de/a',
+        _sampleSearchItem()..['allianzpartnerName'] = 'get in GmbH',
+        _sampleSearchItem(),
+      ];
+      mockClient = MockClient((request) async => http.Response(
+            jsonEncode({'ergebnisliste': items}),
+            200,
+            headers: {'content-type': 'application/json'},
+          ));
+      final apiClient = ApiClient(
+        logger: Logger('Test'),
+        keyService: ApiKeyService(),
+        client: mockClient,
+      );
+      service = BaApiService(client: apiClient);
+
+      await service.search(query: 'Flutter');
+      expect(service.marketStats.externalOffers, 2);
+    });
+
+    test('fetchJobDetails zählt interne Details-Abrufe', () async {
+      mockClient = MockClient((request) async => http.Response(
+            jsonEncode(_sampleDetailsResponse()),
+            200,
+            headers: {'content-type': 'application/json'},
+          ));
+      final apiClient = ApiClient(
+        logger: Logger('Test'),
+        keyService: ApiKeyService(),
+        client: mockClient,
+      );
+      service = BaApiService(client: apiClient);
+
+      await service.fetchJobDetails('12265-487930_JB5205113-S');
+      final stats = service.marketStats;
+      expect(stats.detailsChecked, 1);
+      expect(stats.externalDetails, 0);
+      expect(stats.internalDetails, 1);
+    });
+
+    test('fetchJobDetails zählt externen Details-Abruf', () async {
+      mockClient = MockClient((request) async => http.Response(
+            jsonEncode(_sampleDetailsResponse(external: true)),
+            200,
+            headers: {'content-type': 'application/json'},
+          ));
+      final apiClient = ApiClient(
+        logger: Logger('Test'),
+        keyService: ApiKeyService(),
+        client: mockClient,
+      );
+      service = BaApiService(client: apiClient);
+
+      final details =
+          await service.fetchJobDetails('12265-487930_JB5205113-S');
+      expect(details.externalUrl, isNotNull);
+      final stats = service.marketStats;
+      expect(stats.detailsChecked, 1);
+      expect(stats.externalDetails, 1);
+      expect(stats.internalDetails, 0);
+    });
+
+    test('marketStats ohne Abrufe: Ratio 0.0', () {
+      final stats = service.marketStats;
+      expect(stats.searchedOffers, 0);
+      expect(stats.externalOffers, 0);
+      expect(stats.detailsChecked, 0);
+      expect(stats.externalShare, 0.0);
+      expect(stats.externalShareOfDetails, 0.0);
+    });
   });
+}
+
+/// Ein einzelnes gültiges Such-Item (Basis ohne externe Felder). Die
+/// Statistik-Tests versehen eine Kopie je nach Fall mit `externeUrl`/
+/// `externeURL`/`allianzpartnerName`.
+Map<String, dynamic> _sampleSearchItem() {
+  return {
+    'stellenangebotsart': 'ARBEIT',
+    'stellenangebotsTitel': 'Teststelle (m/w/d)',
+    'arbeitszeitVollzeit': true,
+    'stellenlokationen': [
+      {
+        'adresse': {
+          'plz': '68163',
+          'ort': 'Mannheim',
+          'region': 'BADEN_WUERTTEMBERG',
+          'land': 'DEUTSCHLAND',
+        }
+      }
+    ],
+    'datumErsteVeroeffentlichung': '2026-07-24',
+    'firma': 'Beispiel GmbH',
+    'referenznummer': '12265-487930_JB5205113-S',
+  };
 }
 
 /// Verifizierte BA-API-Response (Stand: 2026-07-26).
@@ -176,4 +350,35 @@ Map<String, dynamic> _sampleResponseWithMultipleLocations() {
     },
   ];
   return data;
+}
+
+/// Verifizierte `jobdetails`-Antwort der BA (Stand: 2026-09-07).
+/// Mit [external] wird die Antwort als externe/Allianz-Anzeige markiert.
+Map<String, dynamic> _sampleDetailsResponse({bool external = false}) {
+  final map = <String, dynamic>{
+    'stellenangebotsart': 'ARBEIT',
+    'stellenangebotsTitel':
+        'Ingenieur (m/w/d) Testautomatisierung Flutter und Dart',
+    'stellenangebotsBeschreibung':
+        'Willkommen im Team! Wir freuen uns auf Ihre Bewerbung.',
+    'arbeitszeitVollzeit': true,
+    'firma': 'FERCHAU GmbH Niederlassung Mannheim',
+    'referenznummer': '12265-487930_JB5205113-S',
+    'stellenlokationen': [
+      {
+        'adresse': {
+          'strasseHausnummer': 'Jüdenstr. 31',
+          'plz': '68163',
+          'ort': 'Mannheim',
+          'region': 'BADEN_WUERTTEMBERG',
+          'land': 'DEUTSCHLAND',
+        }
+      }
+    ],
+  };
+  if (external) {
+    map['externeURL'] = 'https://www.get-in-it.de/jobsuche/p201881';
+    map['allianzpartnerName'] = 'get in GmbH';
+  }
+  return map;
 }

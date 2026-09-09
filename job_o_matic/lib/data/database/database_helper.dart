@@ -16,6 +16,11 @@ class DatabaseHelper {
   static DatabaseHelper? _instance;
   static Database? _database;
 
+  /// Aktuelle Schema-Version. Einzige Quelle der Wahrheit – wird in
+  /// `_initDatabase` (openDatabase) und `createSchemaForTesting` verwendet,
+  /// damit Real- und Bright-Schema garantiert synchron bleiben.
+  static const int schemaVersion = 8;
+
   DatabaseHelper._internal();
 
   /// Cache für den aufgelösten DB-Pfad (muss nur einmal ermittelt werden).
@@ -100,7 +105,7 @@ class DatabaseHelper {
 
     return openDatabase(
       path,
-      version: 7,
+      version: schemaVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: _onConfigure,
@@ -128,7 +133,10 @@ class DatabaseHelper {
         cover_letter_text TEXT,
         email_status     TEXT    NOT NULL DEFAULT 'new'
                           CHECK(email_status IN ('new','queued','sending','sent','failed')),
-        email_address    TEXT
+        email_address    TEXT,
+        email_source     TEXT,
+        email_evidence_url TEXT,
+        contact_person   TEXT
       )
     ''');
 
@@ -319,6 +327,21 @@ class DatabaseHelper {
           ON sent_email_log(application_id, sent_at)
       ''');
     }
+    if (oldVersion < 8) {
+      _log.info(
+        'Migration auf Version 8: Kontakt-Metadaten (email_source, '
+        'email_evidence_url, contact_person)',
+      );
+      await db.execute('''
+        ALTER TABLE applications ADD COLUMN email_source TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE applications ADD COLUMN email_evidence_url TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE applications ADD COLUMN contact_person TEXT
+      ''');
+    }
   }
 
   Future<void> _onConfigure(Database db) async {
@@ -376,7 +399,8 @@ class DatabaseHelper {
   /// (für In-Memory-SQLite in Unit-Tests, damit Repository-Tests gegen die
   /// echte Schema-Definition laufen statt einer Test-Kopie).
   @visibleForTesting
-  Future<void> createSchemaForTesting(Database db) => _onCreate(db, 7);
+  Future<void> createSchemaForTesting(Database db) =>
+      _onCreate(db, schemaVersion);
 
   /// Test-Seam: führt die echte Migrationslogik auf einer fremden DB aus
   /// (für den v6→v7-Migrationstest mit einer Datei-Datenbank).

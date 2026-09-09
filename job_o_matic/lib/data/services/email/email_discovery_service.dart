@@ -30,7 +30,18 @@ class EmailDiscoveryResult {
   /// Optionale Begründung, z. B. „CAPTCHA/Blocker – Abbruch (Stufe 4)“.
   final String? note;
 
-  const EmailDiscoveryResult({this.email, required this.source, this.note});
+  /// Fundstelle (URL), über die die Adresse ermittelt wurde – für Transparenz
+  /// und Persistenz (doc/plan/17, DB v8 `email_evidence_url`). Bei
+  /// `mailtoLink` die Job-URL, bei `contactPage` die aufgelöste Kontakt-URL,
+  /// bei `storedData`/`none` `null`.
+  final String? evidenceUrl;
+
+  const EmailDiscoveryResult({
+    this.email,
+    required this.source,
+    this.note,
+    this.evidenceUrl,
+  });
 
   bool get found => email != null;
 }
@@ -90,10 +101,14 @@ class EmailDiscoveryService {
   /// Stufe 1 – Adresse aus bereits gespeicherten Daten extrahieren
   /// (kein Netzwerkzugriff). Liefert `null`, wenn keine gefunden.
   String? findEmailInStoredData({
+    String? company,
     String? companyAddress,
     String? jobDescription,
   }) {
     final buffer = StringBuffer();
+    if (company != null && company.trim().isNotEmpty) {
+      buffer.writeln(company);
+    }
     if (companyAddress != null && companyAddress.trim().isNotEmpty) {
       buffer.writeln(companyAddress);
     }
@@ -101,19 +116,21 @@ class EmailDiscoveryService {
       buffer.writeln(jobDescription);
     }
     if (buffer.isEmpty) return null;
-    return firstEmailAddressIn(buffer.toString());
+    return firstEmailAddressRobust(buffer.toString());
   }
 
   /// Führt die Kaskade Stufen 1–3 aus und liefert die erste gefundene
   /// Adresse samt Fundstelle. Bei Abbruch (Blocker/Timeout) oder wenn nichts
   /// gefunden wird: `source: none` → UI springt zu Stufe 4 (manuell).
   Future<EmailDiscoveryResult> discover({
+    String? company,
     String? companyAddress,
     String? jobDescription,
     required String jobUrl,
   }) async {
     // Stufe 1: gespeicherte Daten – kein Netzwerkzugriff.
     final fromStored = findEmailInStoredData(
+      company: company,
       companyAddress: companyAddress,
       jobDescription: jobDescription,
     );
@@ -137,6 +154,7 @@ class EmailDiscoveryService {
       return EmailDiscoveryResult(
         email: fromMailto,
         source: EmailDiscoverySource.mailtoLink,
+        evidenceUrl: jobUrl,
       );
     }
 
@@ -149,11 +167,12 @@ class EmailDiscoveryService {
         if (contactPage != null) {
           final onContact =
               _extractMailtoAddress(contactPage) ??
-              firstEmailAddressIn(contactPage.documentElement?.text);
+              firstEmailAddressRobust(contactPage.documentElement?.text);
           if (onContact != null) {
             return EmailDiscoveryResult(
               email: onContact,
               source: EmailDiscoverySource.contactPage,
+              evidenceUrl: contactUrl,
             );
           }
         }

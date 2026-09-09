@@ -27,6 +27,7 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
   final _adzunaApiKeyController = TextEditingController();
   final _adzunaCountryController = TextEditingController();
   final _serpApiKeyController = TextEditingController();
+  final _careerjetApiKeyController = TextEditingController();
   final _brevoApiKeyController = TextEditingController();
   final _geminiApiKeyController = TextEditingController();
   final _mistralApiKeyController = TextEditingController();
@@ -45,6 +46,7 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
     ApiKeyService.adzunaApiKey: 'Adzuna API-Key',
     ApiKeyService.adzunaCountry: 'Adzuna Land/Markt',
     ApiKeyService.serpApiKey: 'SerpAPI',
+    ApiKeyService.careerjetApiKey: 'Careerjet',
     ApiKeyService.brevoApiKey: 'Brevo (E-Mail)',
   };
 
@@ -54,6 +56,8 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
     ApiKeyService.adzunaAppId: 'App-ID aus dem Adzuna Developer Dashboard',
     ApiKeyService.adzunaApiKey: 'API-Key aus dem Adzuna Developer Dashboard',
     ApiKeyService.serpApiKey: 'API-Key für Google Jobs via SerpAPI',
+    ApiKeyService.careerjetApiKey: 'Publisher-API-Key (careerjet.com) – '
+        'kostenloser Fallback vor SerpAPI',
     ApiKeyService.brevoApiKey: 'API-Key v3 aus dem Brevo SMTP & API Bereich',
     ApiKeyService.geminiApiKey: 'API-Key aus Google AI Studio '
         '(kostenloses Kontingent, für KI-generierte Anschreiben)',
@@ -68,6 +72,7 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
     ApiKeyService.adzunaAppId: Icons.apps,
     ApiKeyService.adzunaApiKey: Icons.vpn_key,
     ApiKeyService.serpApiKey: Icons.search,
+    ApiKeyService.careerjetApiKey: Icons.travel_explore,
     ApiKeyService.brevoApiKey: Icons.email,
     ApiKeyService.geminiApiKey: Icons.auto_awesome,
     ApiKeyService.mistralApiKey: Icons.alternate_email,
@@ -92,6 +97,8 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
           await keyService.loadKey(ApiKeyService.adzunaApiKey);
       final adzunaCountry = await keyService.loadAdzunaCountry();
       final serpKey = await keyService.loadKey(ApiKeyService.serpApiKey);
+      final careerjetKey =
+          await keyService.loadKey(ApiKeyService.careerjetApiKey);
       final brevoKey = await keyService.loadKey(ApiKeyService.brevoApiKey);
       final geminiKey = await keyService.loadKey(ApiKeyService.geminiApiKey);
       final mistralKey =
@@ -106,6 +113,7 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
           _adzunaApiKeyController.text = adzunaApiKey ?? '';
           _adzunaCountryController.text = adzunaCountry;
           _serpApiKeyController.text = serpKey ?? '';
+          _careerjetApiKeyController.text = careerjetKey ?? '';
           _brevoApiKeyController.text = brevoKey ?? '';
           _geminiApiKeyController.text = geminiKey ?? '';
           _mistralApiKeyController.text = mistralKey ?? '';
@@ -159,6 +167,7 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
     _adzunaApiKeyController.dispose();
     _adzunaCountryController.dispose();
     _serpApiKeyController.dispose();
+    _careerjetApiKeyController.dispose();
     _brevoApiKeyController.dispose();
     _geminiApiKeyController.dispose();
     _mistralApiKeyController.dispose();
@@ -271,6 +280,8 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
           return _adzunaApiKeyController;
         case ApiKeyService.serpApiKey:
           return _serpApiKeyController;
+        case ApiKeyService.careerjetApiKey:
+          return _careerjetApiKeyController;
         case ApiKeyService.brevoApiKey:
           return _brevoApiKeyController;
         case ApiKeyService.geminiApiKey:
@@ -480,6 +491,7 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
                         _buildKeyField(ApiKeyService.adzunaApiKey),
                         _buildCountryField(),
                         _buildKeyField(ApiKeyService.serpApiKey),
+                        _buildKeyField(ApiKeyService.careerjetApiKey),
                         _buildKeyField(ApiKeyService.brevoApiKey),
                         _buildKeyField(ApiKeyService.geminiApiKey),
                         _buildKeyField(ApiKeyService.mistralApiKey),
@@ -570,6 +582,8 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
                   ),
                 ),
 
+                _buildBaMarketCard(),
+
                 // E-Mail-Versand-Verlauf (DSGVO, Phase F)
                 Card(
                   child: Padding(
@@ -605,6 +619,98 @@ class _ApiKeySettingsScreenState extends ConsumerState<ApiKeySettingsScreen> {
                 ),
               ],
             ),
+    );
+  }
+
+  /// Karte „BA-Markt-Beobachtung“ (doc/plan/16): Wie viele BA-Anzeigen sind
+  /// extern verlinkt vs. intern? Liest die Session-Statistik des BaApiService
+  /// (keine Extra-Requests; Werte seit App-Start).
+  Widget _buildBaMarketCard() {
+    final theme = Theme.of(context);
+    final stats = ref.read(baApiServiceProvider).marketStats;
+    final empty = stats.searchedOffers == 0 && stats.detailsChecked == 0;
+    final externalPct = (stats.externalShare * 100).round();
+    final detailsExternalPct = (stats.externalShareOfDetails * 100).round();
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.bar_chart,
+                    size: 20, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'BA-Markt-Beobachtung',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (empty)
+              Text(
+                'Noch keine Suche gelaufen. Sobald über die BA-JOBBÖRSE '
+                'gesucht wird, zeigt diese Karte, wie viele Anzeigen extern '
+                'verlinkt sind (wichtig für die Kontakt-Ermittlung).',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              )
+            else ...[
+              _statRow('Such-Treffer gesamt', '${stats.searchedOffers}'),
+              _statRow('davon extern (externeURL/Allianz)',
+                  '${stats.externalOffers} · $externalPct %'),
+              _statRow('davon intern', '${stats.internalOffers}'),
+              if (stats.detailsChecked > 0)
+                _statRow(
+                  'Details abgerufen',
+                  '${stats.detailsChecked} '
+                      '(davon extern ${stats.externalDetails} · '
+                      '$detailsExternalPct %)',
+                ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              'Verteilung seit App-Start – für die Beobachtung, wie viele '
+              'BA-Anzeigen ihre Kontaktdaten auf einer externen Anzeige/'
+              'Website führen (doc/plan/16).',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statRow(String label, String value) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(label, style: theme.textTheme.bodySmall),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

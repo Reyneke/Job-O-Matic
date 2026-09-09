@@ -19,7 +19,7 @@ void main() {
     final db = await databaseFactory.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(
-        version: 7,
+        version: DatabaseHelper.schemaVersion,
         onCreate: (db, version) => dbHelper.createSchemaForTesting(db),
       ),
     );
@@ -110,6 +110,64 @@ void main() {
 
       final loaded = await repo.loadApplication(id);
       expect(loaded!.emailStatus, EmailStatus.sending);
+    });
+  });
+
+  group('Application Kontakt-Metadaten (v8)', () {
+    test('emailSource/evidenceUrl/contactPerson werden gerundetrippt', () async {
+      final id = await repo.insertApplication(
+        Application(
+          id: 0,
+          jobTitle: 'Flutter-Entwickler',
+          company: 'Firma GmbH',
+          jobUrl: 'https://example.com/job/1',
+          createdAt: DateTime.now(),
+          emailAddress: 'hr@firma.de',
+          emailSource: 'employerWebsite',
+          emailEvidenceUrl: 'https://firma.de/impressum',
+          contactPerson: 'Frau Muster',
+        ),
+      );
+
+      final loaded = await repo.loadApplication(id);
+      expect(loaded, isNotNull);
+      expect(loaded!.emailAddress, 'hr@firma.de');
+      expect(loaded.emailSource, 'employerWebsite');
+      expect(loaded.emailEvidenceUrl, 'https://firma.de/impressum');
+      expect(loaded.contactPerson, 'Frau Muster');
+    });
+
+    test('updateContactInfo schreibt nur uebergebene Felder', () async {
+      final id = await repo.insertApplication(
+        Application(
+          id: 0,
+          jobTitle: 'Flutter-Entwickler',
+          company: 'Firma GmbH',
+          jobUrl: 'https://example.com/job/1',
+          createdAt: DateTime.now(),
+        ),
+      );
+
+      await repo.updateContactInfo(
+        id,
+        emailAddress: 'hr@firma.de',
+        emailSource: 'mailtoLink',
+        emailEvidenceUrl: 'https://example.com/job/1',
+        contactPerson: 'Herr Beispiel',
+      );
+      var loaded = await repo.loadApplication(id);
+      expect(loaded!.emailAddress, 'hr@firma.de');
+      expect(loaded.emailSource, 'mailtoLink');
+      expect(loaded.emailEvidenceUrl, 'https://example.com/job/1');
+      expect(loaded.contactPerson, 'Herr Beispiel');
+
+      // Nur ein Feld setzen – die übrigen bleiben unverändert.
+      await repo.updateContactInfo(id, emailSource: 'manual');
+      loaded = await repo.loadApplication(id);
+      expect(loaded!.emailAddress, 'hr@firma.de');
+      expect(loaded.emailSource, 'manual');
+      expect(loaded.emailEvidenceUrl, 'https://example.com/job/1');
+      expect(loaded.contactPerson, 'Herr Beispiel');
     });
   });
 }

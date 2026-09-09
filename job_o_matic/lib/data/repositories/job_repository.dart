@@ -261,13 +261,17 @@ class JobRepository extends ChangeNotifier {
     }
   }
 
-  /// Update an application's email details (address + send status) and
-  /// persist. Used by the /send screen (E-Mail-Adress-Ermittlung Stufe 4 +
-  /// Status je Bewerbung).
+  /// Update an application's email details (address + send status + Kontakt-
+  /// Metadaten) and persist. Used by the /send screen (E-Mail-Adress-Ermittlung
+  /// Stufe 4 + Status je Bewerbung) sowie den Batch-Enrichment-Service
+  /// (doc/plan/17, DB v8).
   void updateApplicationEmail(
     int id, {
     String? emailAddress,
     EmailStatus? emailStatus,
+    String? emailSource,
+    String? emailEvidenceUrl,
+    String? contactPerson,
   }) {
     final index = _applications.indexWhere((a) => a.id == id);
     if (index < 0) return;
@@ -278,9 +282,18 @@ class JobRepository extends ChangeNotifier {
     if (emailStatus != null) {
       updated = updated.copyWith(emailStatus: emailStatus);
     }
+    if (emailSource != null) {
+      updated = updated.copyWith(emailSource: emailSource);
+    }
+    if (emailEvidenceUrl != null) {
+      updated = updated.copyWith(emailEvidenceUrl: emailEvidenceUrl);
+    }
+    if (contactPerson != null) {
+      updated = updated.copyWith(contactPerson: contactPerson);
+    }
     _applications[index] = updated;
     _log.fine(
-      'Applikation $id: emailAddress/emailStatus aktualisiert'
+      'Applikation $id: emailAddress/emailStatus/Quelle aktualisiert'
       ' (${updated.emailStatus.storeValue})',
     );
     _dbRepo.updateApplication(updated);

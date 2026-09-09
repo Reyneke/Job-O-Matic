@@ -1,10 +1,11 @@
 # Aktueller Stand
 
-> **Status-Übersicht (Stand: 2026-08-10)**
+> **Status-Übersicht (Stand: 2026-09-08)**
 > - ✅ **BA-JOBBÖRSE-API** – Verbindung steht (HTTP 200), **Response-Parsing korrigiert** → Suche liefert Ergebnisse
 > - ✅ **Adzuna-API** – Implementiert, benötigt App-ID + API-Key (Free-Tier: 50 Calls/Tag)
 > - ✅ **JobScraperService** – HTML-Scraping **in `JobInputScreen` eingebunden** – extrahiert Job-Details aus URLs
-> - ❌ **SerpAPI/Google Jobs** – Key-Konstante vorhanden, Service **nicht implementiert**
+> - ✅ **SerpAPI/Google Jobs** – Service implementiert und als **letzter Fallback** in `JobSearchService` eingebunden
+> - ✅ **Careerjet** – Kostenloser Fallback (Publisher-Key) **vor** SerpAPI in `JobSearchService` eingebunden; SerpAPI bleibt letzter Fallback
 > - ✅ **UI-Fehlermeldung** in `JobSearchScreen` **korrigiert** (Key-Registrierungs-Hinweis entfernt)
 > - ✅ **Unit-Tests** für `BaApiService._parseJobOffers` hinzugefügt (6 Tests bestanden)
 
@@ -16,7 +17,9 @@
 |---|--------|---------|--------|-------------------|-----------|
 | 1 | **BA-JOBBÖRSE** (Bundesagentur für Arbeit) | `BaApiService` | ✅ Funktionsfähig | Fester, öffentlicher Key (`X-API-Key: jobboerse-jobsuche`) | Parsing korrigiert, inkl. Gehalt & Beschäftigungsart |
 | 2 | **Adzuna** | `AdzunaApiService` | ✅ Implementiert | App-ID + API-Key (via `ApiKeyService`) | Free-Tier: 50 Calls/Tag |
-| 3 | **HTML-Scraping** (Fallback) | `JobScraperService` | ✅ Eingebunden | Keine | In `JobInputScreen` integriert – extrahiert Titel/Firma/Ort aus URLs |
+| 3 | **Careerjet** | `CareerjetApiService` | ✅ Implementiert | Publisher-Key (kostenlos, via `ApiKeyService`) | Kostenloser Fallback vor SerpAPI (Kaskade BA → Adzuna → Careerjet → SerpAPI). Aggregator; **kein** E-Mail-Feld; `user_ip` via ipify (→ live verifizieren). Im Konnektivitäts-Test enthalten. |
+| 4 | **HTML-Scraping** (Fallback) | `JobScraperService` | ✅ Eingebunden | Keine | In `JobInputScreen` integriert – extrahiert Titel/Firma/Ort aus URLs |
+| 5 | **SerpAPI / Google Jobs** | `SerpApiService` | ✅ Implementiert | SerpAPI-Key (kostenpflichtig, via `ApiKeyService`) | Letzter Fallback in der Kaskade BA → Adzuna → Careerjet → SerpAPI; bewusst **nicht** im Konnektivitäts-Test |
 
 ### 1.1 BA-JOBBÖRSE (primär)
 
@@ -40,18 +43,27 @@
 - **Status:** In `JobInputScreen` eingebunden – extrahiert Job-Details beim Hinzufügen von URLs
 - **Risiken:** Rechtliche Einschränkungen (AGB, Urheberrecht), CAPTCHA, fragile CSS-Selektoren
 
+### 1.4 Careerjet (kostenloser Fallback vor SerpAPI)
+
+- **Endpunkt:** `https://search.api.careerjet.net/v4/query`, `locale_code=de_DE`
+- **Authentifizierung:** Publisher-API-Key (Basic Auth), gespeichert via `flutter_secure_storage`
+- **Pflichtfelder:** `user_ip` (via `api.ipify.org`, einmal pro Prozess) + `user_agent`
+- **Einordnung:** Aggregator → überlappt mit BA/Adzuna; **kein** Arbeitgeber-E-Mail-Feld
+  (Kontakt-Kaskade aus `doc/plan/16`). Nur als kostenloser Lückenfüller vor dem
+  kostenpflichtigen SerpAPI-Fallback (Kaskade BA → Adzuna → Careerjet → SerpAPI).
+- **Dokumentation:** https://www.careerjet.com/partners/api/
+
 ---
 
 ## 2. Noch fehlende Jobbörsen
 
 | # | Quelle | Status | Aufwand | Anmerkung |
 |---|--------|--------|---------|-----------|
-| 1 | **SerpAPI / Google Jobs** | ❌ Nicht implementiert | Mittel | Key-Konstante `serpapi` existiert in `ApiKeyService`; Service-Klasse fehlt |
-| 2 | **Indeed** | ❌ Nicht verfügbar | – | API wurde 2024 eingestellt; nur noch über Partnerprogramm |
-| 3 | **LinkedIn** | ❌ Nicht verfügbar | – | Nur Enterprise-Lizenz |
-| 4 | **Jooble** | ❌ Nicht implementiert | Gering | Free-Tier: 100 Requests/Monat |
-| 5 | **StepStone** | ❌ Nicht implementiert | – | Keine öffentliche API; nur Scraping möglich |
-| 6 | **Monster** | ❌ Nicht implementiert | – | Keine öffentliche API; nur Scraping möglich |
+| 1 | **Indeed** | ❌ Nicht verfügbar | – | API wurde 2024 eingestellt; nur noch über Partnerprogramm |
+| 2 | **LinkedIn** | ❌ Nicht verfügbar | – | Nur Enterprise-Lizenz |
+| 3 | **Jooble** | ❌ Nicht implementiert | Gering | Free-Tier: 100 Requests/Monat |
+| 4 | **StepStone** | ❌ Nicht implementiert | – | Keine öffentliche API; nur Scraping möglich |
+| 5 | **Monster** | ❌ Nicht implementiert | – | Keine öffentliche API; nur Scraping möglich |
 
 ---
 
@@ -105,9 +117,9 @@
 
 Adzuna erfordert manuelle Key-Eingabe durch den Nutzer. Ohne konfigurierte Keys schlägt die sekundäre Suche fehl (wird aber korrekt als Fallback behandelt).
 
-### 4.5 Kein SerpAPI-Service
+### 4.5 SerpAPI-Service (letzter Fallback)
 
-`ApiKeyService` definiert die Konstante `serpapi`, aber es existiert **keine** `SerpApiService`-Klasse – die geplante Fallback-Quelle fehlt vollständig.
+`SerpApiService` ist implementiert (`job_o_matic/lib/data/services/api/serp_api_service.dart`) und als **letzter Fallback** in `JobSearchService` eingebunden (Reihenfolge BA → Adzuna → SerpAPI). Voraussetzung ist ein kostenpflichtiger Key über `ApiKeyService` (`serpApiKey`). Ohne konfigurierten Key wird die Quelle wie ein Fehler behandelt und übersprungen (kein Blocker); SerpAPI ist bewusst nicht im Konnektivitäts-Test (`ApiConnectivityService`).
 
 ---
 
@@ -115,7 +127,7 @@ Adzuna erfordert manuelle Key-Eingabe durch den Nutzer. Ohne konfigurierte Keys 
 
 | # | Topic | Priorität | Status |
 |---|-------|-----------|--------|
-| 1 | **SerpAPI-Service implementieren** – Als kostenpflichtige Premium-Option | 🟡 Mittel | ❌ Offen |
+| 1 | **SerpAPI-Service implementieren** – Als kostenpflichtige Premium-Option | 🟡 Mittel | ✅ Erledigt (letzter Fallback) |
 | 2 | **Portal-spezifische Scraper-Selektoren** – StepStone, Indeed, LinkedIn | 🟢 Niedrig | ❌ Offen |
 | 3 | **CAPTCHA-Erkennung** – Automatischer Abbruch bei CAPTCHA | 🟢 Niedrig | ❌ Offen |
 | 4 | **Connectivity-Check** – `connectivity_plus` vor API-Aufruf (Offline-Hinweis) | 🟢 Niedrig | ❌ Offen |
@@ -145,10 +157,10 @@ Adzuna erfordert manuelle Key-Eingabe durch den Nutzer. Ohne konfigurierte Keys 
 - [x] **UI-Fehlermeldung in `JobSearchScreen` aktualisieren** – Key-Registrierungs-Hinweis entfernen
 - [x] **`JobScraperService` in `JobInputScreen` einbinden** – Extrahiert Job-Details aus URLs
 - [x] **Unit-Tests für `BaApiService._parseJobOffers`** – 6 Tests mit verifizierter Response-Struktur bestanden
-- [ ] **SerpAPI-Service implementieren** – `SerpApiService` mit Key aus `ApiKeyService`
+- [x] **SerpAPI-Service implementieren** – `SerpApiService` mit Key aus `ApiKeyService`
 - [ ] **Optional:** Jobdetails-Endpunkt für Beschreibungen nachladen
 
 ---
 
-_Stand: 2026-08-10_
+_Stand: 2026-09-08_
 _Dieses Dokument wird bei Projektfortschritt aktualisiert._

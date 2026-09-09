@@ -75,6 +75,24 @@ class Application {
   /// Adress-Kaskade bzw. Ergebnis von Stufe 1–3), persistiert.
   final String? emailAddress;
 
+  /// Quelle der ermittelten E-Mail-Adresse (doc/plan/17, DB v8).
+  ///
+  /// Enthält den String-Wert einer der bestehenden Quell-Enums
+  /// (`EmailDiscoverySource` = storedData/mailtoLink/contactPage/none bzw.
+  /// `BaContactSource` = description/externalJobPage/employerWebsite/none)
+  /// oder `manual` für Stufe 4 (manuelle Eingabe). Bewusst als freier
+  /// `String` ohne CHECK-Constraint, damit zukünftige Quellen nicht sofort
+  /// eine DB-Migration erzwingen.
+  final String? emailSource;
+
+  /// Fundstelle/Beleg-URL, über die die Adresse ermittelt wurde (z. B. die
+  /// aufgelöste Kontakt- oder Impressum-Seite) – für Transparenz/Audit.
+  final String? emailEvidenceUrl;
+
+  /// Name des Ansprechpartners (optional; z. B. aus der Beschreibung
+  /// extrahiert oder manuell ergänzt). Persistiert für UI + PDF-Templates.
+  final String? contactPerson;
+
   const Application({
     required this.id,
     required this.jobTitle,
@@ -90,6 +108,9 @@ class Application {
     this.coverLetterText,
     this.emailStatus = EmailStatus.initial,
     this.emailAddress,
+    this.emailSource,
+    this.emailEvidenceUrl,
+    this.contactPerson,
   });
 
   Application copyWith({
@@ -107,6 +128,9 @@ class Application {
     String? coverLetterText,
     EmailStatus? emailStatus,
     String? emailAddress,
+    String? emailSource,
+    String? emailEvidenceUrl,
+    String? contactPerson,
   }) {
     return Application(
       id: id ?? this.id,
@@ -123,6 +147,9 @@ class Application {
       coverLetterText: coverLetterText ?? this.coverLetterText,
       emailStatus: emailStatus ?? this.emailStatus,
       emailAddress: emailAddress ?? this.emailAddress,
+      emailSource: emailSource ?? this.emailSource,
+      emailEvidenceUrl: emailEvidenceUrl ?? this.emailEvidenceUrl,
+      contactPerson: contactPerson ?? this.contactPerson,
     );
   }
 
@@ -141,6 +168,9 @@ class Application {
     'coverLetterText': coverLetterText,
     'emailStatus': emailStatus.storeValue,
     'emailAddress': emailAddress,
+    'emailSource': emailSource,
+    'emailEvidenceUrl': emailEvidenceUrl,
+    'contactPerson': contactPerson,
   };
 
   factory Application.fromJson(Map<String, dynamic> json) => Application(
@@ -165,5 +195,8 @@ class Application {
       json['emailStatus'] as String? ?? EmailStatus.initial.storeValue,
     ),
     emailAddress: json['emailAddress'] as String?,
+    emailSource: json['emailSource'] as String?,
+    emailEvidenceUrl: json['emailEvidenceUrl'] as String?,
+    contactPerson: json['contactPerson'] as String?,
   );
 }

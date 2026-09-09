@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -102,6 +103,35 @@ void main() {
       final results = await service.checkAll();
       final adzuna = results.firstWhere((r) => r.serviceLabel == 'Adzuna');
       expect(adzuna.status, ApiConnectivityStatus.ok);
+    });
+
+    test('Careerjet is notConfigured without key', () async {
+      final service = build(
+          MockClient((request) async => http.Response('', 500)));
+
+      final results = await service.checkAll();
+      final careerjet =
+          results.firstWhere((r) => r.serviceLabel == 'Careerjet');
+      expect(careerjet.status, ApiConnectivityStatus.notConfigured);
+    });
+
+    test('Careerjet reports ok + sends basic auth when key is configured',
+        () async {
+      storedKeys = {ApiKeyService.careerjetApiKey: 'k'};
+      final expectedAuth =
+          'Basic ${base64Encode(utf8.encode('k:'))}';
+      final service = build(MockClient((request) async {
+        expect(request.url.host, 'search.api.careerjet.net');
+        expect(request.url.queryParameters['locale_code'], 'de_DE');
+        expect(request.url.queryParameters['user_ip'], '127.0.0.1');
+        expect(request.headers['Authorization'], expectedAuth);
+        return http.Response('{}', 200);
+      }));
+
+      final results = await service.checkAll();
+      final careerjet =
+          results.firstWhere((r) => r.serviceLabel == 'Careerjet');
+      expect(careerjet.status, ApiConnectivityStatus.ok);
     });
 
     test('reports failed on non-2xx status', () async {

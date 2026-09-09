@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:logging/logging.dart';
 import 'ba_api_service.dart';
 import 'adzuna_api_service.dart';
+import 'careerjet_api_service.dart';
 import 'serp_api_service.dart';
 import 'api_cache_service.dart';
 import 'job_offer_mapper.dart';
@@ -9,22 +10,25 @@ import '../../models/job_offer.dart';
 
 /// Orchestriert die Jobsuche über mehrere Quellen.
 ///
-/// Reihenfolge: BA → Adzuna → SerpAPI (kaskadierend)
+/// Reihenfolge: BA → Adzuna → Careerjet → SerpAPI (kaskadierend)
 /// Ergebnisse werden dedupliziert und gecacht.
 class JobSearchService {
   final Logger _log = Logger('JobSearchService');
   final BaApiService _baService;
   final AdzunaApiService? _adzunaService;
+  final CareerjetApiService? _careerjetService;
   final SerpApiService? _serpService;
   final ApiCacheService? _cacheService;
 
   JobSearchService({
     required BaApiService baService,
     AdzunaApiService? adzunaService,
+    CareerjetApiService? careerjetService,
     SerpApiService? serpService,
     ApiCacheService? cacheService,
   })  : _baService = baService,
         _adzunaService = adzunaService,
+        _careerjetService = careerjetService,
         _serpService = serpService,
         _cacheService = cacheService;
 
@@ -113,9 +117,39 @@ class JobSearchService {
       }
     }
 
-    // 3. SerpAPI (letzter Fallback) – nur wenn BA + Adzuna zusammen zu wenig
-    // Ergebnisse liefern. SerpAPI ist kostenpflichtig und langsam, daher
-    // bewusst nicht als Parallel-/Default-Quelle, sondern als letzte Kaskade.
+    // 3. Careerjet (kostenloser Fallback) – vor dem kostenpflichtigen SerpAPI.
+    //    Careerjet ist ein Aggregator; nur anfragen, wenn BA + Adzuna zu wenig
+    //    liefern (doc/plan/16, Antwort 3).
+    if (_careerjetService != null && allResults.length < 10) {
+      try {
+        final careerjetResults = await _careerjetService.search(
+          query: query,
+          location: location,
+          radius: radius,
+          employmentType: employmentType,
+          page: page,
+          size: size,
+        );
+        for (final job in careerjetResults) {
+          if (seenKeys.add(_dedupeKey(job))) {
+            allResults.add(job);
+          }
+        }
+        _log.info('Careerjet: ${careerjetResults.length} Ergebnisse');
+      } on JobApiException catch (e) {
+        final careerjetError = 'Careerjet-API: ${e.message}'
+            '${e.statusCode != null ? ' (HTTP ${e.statusCode})' : ''}';
+        _log.warning(careerjetError);
+        errorMessage ??= careerjetError;
+      } catch (e) {
+        _log.warning('Careerjet-API fehlgeschlagen: $e');
+      }
+    }
+
+    // 4. SerpAPI (letzter Fallback) – nur wenn BA + Adzuna (+ Careerjet) zusammen
+    // zu wenig Ergebnisse liefern. SerpAPI ist kostenpflichtig und langsam,
+    // daher bewusst nicht als Parallel-/Default-Quelle, sondern als letzte
+    // Kaskade.
     if (_serpService != null && allResults.length < 10) {
       try {
         final serpResults = await _serpService.search(

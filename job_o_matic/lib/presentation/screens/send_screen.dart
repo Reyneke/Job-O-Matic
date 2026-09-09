@@ -8,8 +8,10 @@ import 'package:logging/logging.dart';
 
 import '../../core/providers/providers.dart';
 import '../../data/repositories/job_repository.dart';
+import '../../data/services/api/ba_contact_resolver.dart';
 import '../../data/services/email/email_address_utils.dart';
 import '../../data/services/email/email_discovery_service.dart';
+import '../../data/services/email/contact_enrichment_service.dart';
 import '../../data/services/email/email_service.dart';
 import '../../data/services/email/circuit_breaker.dart';
 import '../../data/services/email/mail_queue_service.dart';
@@ -252,6 +254,15 @@ class _SendScreenState extends ConsumerState<SendScreen> {
               context.canPop() ? context.pop() : context.go('/applications'),
         ),
         actions: [
+          // Batch-Kontakt-Anreicherung (doc/plan/17): ermittelt fehlende
+          // Adressen über die vorhandene Kaskade und zeigt Treffer je Job.
+          IconButton(
+            icon: const Icon(Icons.find_in_page),
+            tooltip: 'Kontakte für fehlende Adressen ermitteln',
+            onPressed: (_configured && !_busy && sendable.isNotEmpty)
+                ? _enrichBatch
+                : null,
+          ),
           // Debug-Test (Phase E/F): sendet eine ausgewählte bzw. die erste
           // versandfähige Bewerbung testweise an den Absender selbst.
           IconButton(
@@ -701,7 +712,11 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         final cc = _parseAddressList(draft.cc.text);
         final bcc = _parseAddressList(draft.bcc.text);
 
-        repo.updateApplicationEmail(id, emailStatus: EmailStatus.queued);
+        repo.updateApplicationEmail(
+          id,
+          emailAddress: draft.recipient.text.trim(),
+          emailStatus: EmailStatus.queued,
+        );
         await dispatcher.enqueueApplicationEmail(
           to: draft.recipient.text.trim(),
           position: app.jobTitle,
@@ -968,11 +983,188 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     );
   }
 
+  /// Batch-Kontakt-Anreicherung (doc/plan/17): führt die vorhandene Kaskade
+  /// für alle versandfähigen Bewerbungen aus, deren Empfänger noch keine
+  /// gültige Adresse hat, und zeigt die Treffer zur Bestätigung.
+  Future<void> _enrichBatch() async {
+    final repo = ref.read(jobRepositoryProvider);
+    final sendable = _sendableApplications(repo.applications);
+    final targets = <Application>[];
+    for (final a in sendable) {
+      final current = _drafts[a.id]?.recipient.text.trim() ??
+          a.emailAddress?.trim() ??
+          '';
+      if (!isValidEmail(current)) targets.add(a);
+    }
+    if (targets.isEmpty) {
+      _showSnack('Keine Bewerbung ohne gültige E-Mail-Adresse.');
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final outcomes = await ref
+          .read(contactEnrichmentServiceProvider)
+          .enrich(targets);
+      if (!mounted) return;
+      await _showEnrichmentDialog(outcomes);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Zeigt die Batch-Treffer mit Checkbox je Job; beim „Übernehmen“ werden die
+  /// markierten Adressen inkl. Quelle/Fundstelle/Ansprechpartner persistiert.
+  Future<void> _showEnrichmentDialog(
+    List<ContactEnrichmentOutcome> outcomes,
+  ) async {
+    final found = outcomes.where((o) => o.found).toList();
+    final accepted = <int>{...found.map((o) => o.applicationId)};
+    final stats = ref.read(contactEnrichmentServiceProvider).stats;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final summary = _sourceSummary(stats.bySource);
+          return AlertDialog(
+            title:
+                Text('Kontakte ermittelt (${found.length}/${outcomes.length})'),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Treffer je Quelle: $summary',
+                      style: Theme.of(ctx).textTheme.bodySmall,
+                    ),
+                    const Divider(),
+                    if (found.isEmpty)
+                      const Text(
+                        'Keine Adresse automatisch ermittelt.\n'
+                        'Bitte ergänzen Sie die Adressen manuell '
+                        '(Ermitteln-Symbol je Zeile).',
+                      )
+                    else
+                      ...found.map(
+                        (o) => CheckboxListTile(
+                          value: accepted.contains(o.applicationId),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: Text(
+                            '${o.jobTitle} · ${o.company}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${o.email}'
+                            '\nQuelle: ${_humanSource(o.emailSource)}'
+                            '${o.contactPerson == null ? '' : '\nAnsprechpartner: ${o.contactPerson}'}'
+                            '${o.evidenceUrl == null ? '' : '\n${o.evidenceUrl}'}',
+                          ),
+                          onChanged: (v) => setDialogState(() {
+                            if (v == true) {
+                              accepted.add(o.applicationId);
+                            } else {
+                              accepted.remove(o.applicationId);
+                            }
+                          }),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Schließen'),
+              ),
+              if (found.isNotEmpty)
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Übernehmen (${accepted.length})'),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (accepted.isEmpty) return;
+    final repo = ref.read(jobRepositoryProvider);
+    var count = 0;
+    for (final o in outcomes) {
+      if (!accepted.contains(o.applicationId) || o.email == null) continue;
+      repo.updateApplicationEmail(
+        o.applicationId,
+        emailAddress: o.email,
+        emailSource: o.emailSource,
+        emailEvidenceUrl: o.evidenceUrl,
+        contactPerson: o.contactPerson,
+      );
+      final draft = _drafts[o.applicationId];
+      if (draft != null) draft.recipient.text = o.email!;
+      count++;
+    }
+    if (mounted) setState(() {});
+    _showSnack('$count Adresse(n) übernommen und gespeichert.');
+  }
+
+  /// Übersetzt einen persistierten Quellwert (`emailSource`) in ein Label.
+  static String _humanSource(String? source) {
+    switch (source) {
+      case 'description':
+        return 'Beschreibung';
+      case 'externalJobPage':
+        return 'Externe Anzeige';
+      case 'employerWebsite':
+        return 'Arbeitgeber-Website';
+      case 'mailtoLink':
+        return 'mailto-Link';
+      case 'contactPage':
+        return 'Kontaktseite';
+      case 'storedData':
+        return 'gespeicherte Daten';
+      case 'manual':
+        return 'manuell';
+      default:
+        return source ?? '–';
+    }
+  }
+
+  /// Kompakte Zusammenfassung der Treffer je Quelle (z. B. „Beschreibung: 2 ·
+  /// mailto-Link: 1“). Leer -> „keine“.
+  static String _sourceSummary(Map<String, int> bySource) {
+    final parts = bySource.entries
+        .where((e) => e.value > 0)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    if (parts.isEmpty) return 'keine';
+    return parts
+        .map((e) => '${_humanSource(e.key)}: ${e.value}')
+        .join(' · ');
+  }
+
   Future<void> _discoverAddress(Application app) async {
+    // BA-Anzeige? Dann läuft die Ermittlung über die BA-REST-Kaskade
+    // (doc/plan/16-Jobsuche-BA.md) statt über die generische HTML-Variante –
+    // diese würde sonst die captcha-/logingeschützte arbeitsagentur.de-Seite
+    // laden (nie erlaubt). Die refnr wird aus der gespeicherten Job-URL
+    // ermittelt und funktioniert damit auch nach einem App-Neustart.
+    final refnr = baRefnrFromJobUrl(app.jobUrl);
+    if (refnr != null) {
+      await _discoverBaAddress(app, refnr);
+      return;
+    }
+
     setState(() => _busy = true);
     try {
       final service = ref.read(emailDiscoveryServiceProvider);
       final result = await service.discover(
+        company: app.company,
         companyAddress: app.companyAddress,
         jobDescription: app.jobDescription,
         jobUrl: app.jobUrl,
@@ -1036,6 +1228,83 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     }
   }
 
+  /// Kontakt-Ermittlung für eine BA-Stellenanzeige über die REST-Kaskade
+  /// [BaContactResolver] (doc/plan/16-Jobsuche-BA.md): Beschreibungstext →
+  /// externe Anzeige → Arbeitgeber-Website → manueller Fallback. Kein Kontakt
+  /// zur captcha-/logingeschützten HTML-Seite von arbeitsagentur.de.
+  Future<void> _discoverBaAddress(Application app, String refnr) async {
+    setState(() => _busy = true);
+    try {
+      final resolver = ref.read(baContactResolverProvider);
+      final result = await resolver.resolve(refnr: refnr);
+      if (!mounted) return;
+      final draft = _draftFor(app);
+
+      if (result.found && result.email != null) {
+        final adopt = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Kontakt ermittelt (BA)'),
+            content: Text(
+              'Quelle: ${_baSourceLabel(result.source)}\n\n'
+              '${result.email}\n\nÜbernehmen und speichern?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Verwerfen'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Übernehmen'),
+              ),
+            ],
+          ),
+        );
+        if (adopt == true) {
+          draft.recipient.text = result.email!;
+          ref
+              .read(jobRepositoryProvider)
+              .updateApplicationEmail(app.id, emailAddress: result.email);
+          setState(() {});
+        }
+      } else {
+        // Manueller Fallback (Stufe 5): Hinweis + Anschrift/URLs anzeigen.
+        final note = result.note;
+        final lines = <String>[
+          'Automatische Ermittlung (BA) ohne Ergebnis.',
+          if (note != null && note.isNotEmpty) note,
+          if (result.address != null && result.address!.isNotEmpty)
+            'Anschrift: ${result.address}',
+        ];
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Keine E-Mail-Adresse gefunden'),
+            content: Text(
+              '${lines.join('\n\n')}\n\n'
+              'Bitte die Adresse manuell eintragen (ggf. auf der externen '
+              'Anzeige/Website nachsehen).',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      _log.warning('BA-Kontakt-Ermittlung fehlgeschlagen: $e');
+      if (mounted) {
+        _showSnack('Kontakt-Ermittlung fehlgeschlagen: $e', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   static String _sourceLabel(EmailDiscoverySource source) {
     switch (source) {
       case EmailDiscoverySource.storedData:
@@ -1045,6 +1314,19 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       case EmailDiscoverySource.contactPage:
         return '3 (Kontaktseite)';
       case EmailDiscoverySource.none:
+        return '–';
+    }
+  }
+
+  static String _baSourceLabel(BaContactSource source) {
+    switch (source) {
+      case BaContactSource.description:
+        return 'Beschreibungstext';
+      case BaContactSource.externalJobPage:
+        return 'Externe Anzeige';
+      case BaContactSource.employerWebsite:
+        return 'Arbeitgeber-Website';
+      case BaContactSource.none:
         return '–';
     }
   }

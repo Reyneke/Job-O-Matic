@@ -20,7 +20,7 @@ void main() {
     final db = await databaseFactory.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(
-        version: 7,
+        version: DatabaseHelper.schemaVersion,
         onCreate: (db, version) => dbHelper.createSchemaForTesting(db),
       ),
     );

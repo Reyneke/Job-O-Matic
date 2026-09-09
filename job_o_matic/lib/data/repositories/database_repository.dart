@@ -95,6 +95,35 @@ class DatabaseRepository {
     _log.fine('email_address für Application $applicationId gesetzt');
   }
 
+  /// Kontakt-Metadaten einer Bewerbung persistieren (doc/plan/17, DB v8).
+  ///
+  /// Schreibt nur die übergebenen, nicht-`null` Felder – so lassen sich
+  /// E-Mail-Adresse, Quelle, Fundstelle und Ansprechpartner in **einem**
+  /// Aufruf (bzw. gezielt einzeln) setzen, ohne andere Werte zu überschreiben.
+  Future<void> updateContactInfo(
+    int applicationId, {
+    String? emailAddress,
+    String? emailSource,
+    String? emailEvidenceUrl,
+    String? contactPerson,
+  }) async {
+    final fields = <String, dynamic>{
+      'email_address': ?emailAddress,
+      'email_source': ?emailSource,
+      'email_evidence_url': ?emailEvidenceUrl,
+      'contact_person': ?contactPerson,
+    };
+    if (fields.isEmpty) return;
+    final db = await _dbHelper.database;
+    await db.update(
+      'applications',
+      fields,
+      where: 'id = ?',
+      whereArgs: [applicationId],
+    );
+    _log.fine('Kontakt-Metadaten für Application $applicationId aktualisiert');
+  }
+
   /// Prüfen, ob eine URL bereits in den letzten 90 Tagen verarbeitet wurde.
   Future<bool> isDuplicateUrl(String url) async {
     final db = await _dbHelper.database;
@@ -295,6 +324,9 @@ class DatabaseRepository {
       'cover_letter_text': app.coverLetterText,
       'email_status': app.emailStatus.storeValue,
       'email_address': app.emailAddress,
+      'email_source': app.emailSource,
+      'email_evidence_url': app.emailEvidenceUrl,
+      'contact_person': app.contactPerson,
     };
     if (includeId) {
       row['id'] = app.id;
@@ -328,6 +360,9 @@ class DatabaseRepository {
       row['email_status'] as String? ?? EmailStatus.initial.storeValue,
     ),
     emailAddress: row['email_address'] as String?,
+    emailSource: row['email_source'] as String?,
+    emailEvidenceUrl: row['email_evidence_url'] as String?,
+    contactPerson: row['contact_person'] as String?,
   );
 
   Map<String, dynamic> _cvDataToRow(CvData cvData) => {
